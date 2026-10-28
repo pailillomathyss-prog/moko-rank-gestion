@@ -20,6 +20,15 @@ test("guild settings and member stats persist, then reset on the 14-day boundary
     database.setRankRole(guildId, 1, "rank-one");
     database.addMessage(guildId, "member-test");
     database.addVoiceTime(guildId, "member-test", 60_000);
+    database.saveTestSession({
+      guildId,
+      userId: "tester",
+      channelId: "test-channel",
+      roleIds: ["rank-one", "rank-two"],
+      originalRoleIds: ["rank-one"],
+      currentLevel: 2,
+    });
+    database.updateTestSessionLevel(guildId, "tester", 3);
     database.close();
 
     database = new RankDatabase(databasePath);
@@ -28,6 +37,16 @@ test("guild settings and member stats persist, then reset on the 14-day boundary
       voiceMs: 60_000,
     });
     assert.equal(database.getGuild(guildId).roleIds[0], "rank-one");
+    assert.deepEqual(database.getTestSessions(guildId), [
+      {
+        guildId,
+        userId: "tester",
+        channelId: "test-channel",
+        roleIds: ["rank-one", "rank-two"],
+        originalRoleIds: ["rank-one"],
+        currentLevel: 3,
+      },
+    ]);
 
     const resetAt = database.getGuild(guildId).nextResetAt;
     database.resetCycle(guildId, resetAt);
@@ -38,6 +57,8 @@ test("guild settings and member stats persist, then reset on the 14-day boundary
     assert.equal(database.getGuild(guildId).cycleStartedAt, resetAt);
     assert.equal(database.getGuild(guildId).nextResetAt, resetAt + RESET_INTERVAL_MS);
     assert.equal(database.getGuild(guildId).roleIds[0], "rank-one");
+    database.deleteTestSession(guildId, "tester");
+    assert.deepEqual(database.getTestSessions(guildId), []);
     database.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });

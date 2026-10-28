@@ -33,3 +33,31 @@ test("the server AFK channel is not counted as voice activity", () => {
   assert.equal(tracker.activeDuration(guild.id, member.id, 5_000), 0);
   assert.deepEqual(savedTime, []);
 });
+
+test("pausing a test excludes vocal time until the test ends", () => {
+  const savedTime = [];
+  const tracker = new VoiceTracker({
+    addVoiceTime: (...args) => savedTime.push(args),
+  });
+  const guild = {
+    id: "guild-test",
+    afkChannelId: "afk",
+    voiceStates: { cache: new Map() },
+  };
+  const member = { id: "member-test", user: { bot: false } };
+  const activeState = { guild, member, channelId: "voice" };
+  const inactiveState = { guild, member, channelId: null };
+
+  guild.voiceStates.cache.set(member.id, activeState);
+  tracker.handleStateChange(inactiveState, activeState, 100);
+  tracker.pauseUser(guild.id, member.id, 600);
+  assert.equal(tracker.activeDuration(guild.id, member.id, 700), 0);
+
+  tracker.resumeUser(guild, member, 700);
+  assert.equal(tracker.activeDuration(guild.id, member.id, 1_000), 300);
+  tracker.handleStateChange(activeState, inactiveState, 1_000);
+  assert.deepEqual(savedTime, [
+    ["guild-test", "member-test", 500],
+    ["guild-test", "member-test", 300],
+  ]);
+});

@@ -27,8 +27,11 @@ Le comptage commence lorsque le bot rejoint le serveur : Discord ne permet pas d
 - `+stats @membre` — affiche la progression d'un membre.
 - `+panel` — affiche les cinq menus pour choisir les rôles (permission **Gérer les rôles** requise).
 - `+panel retirer 3` — retire l'association du palier indiqué.
+- `+testpanel` ou `+test` — ouvre un panneau de test temporaire (permission **Gérer les rôles** requise).
 
 Les rôles sont choisis dans les menus du panneau Discord. Le rôle du bot doit être placé au-dessus des rôles de rang dans les paramètres du serveur.
+
+Dans le panneau de test, chaque message normal envoyé par la personne qui lance le test attribue le rôle du palier suivant, jusqu'au palier 5. Le test ignore le vocal et ne modifie pas les compteurs réels. Le bouton de fin restaure les rôles présents avant le test ; la restauration se fait aussi après 10 minutes d'inactivité ou si le bot redémarre.
 
 ## Configuration Discord
 

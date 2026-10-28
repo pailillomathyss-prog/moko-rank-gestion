@@ -35,6 +35,31 @@ export class VoiceTracker {
     return session ? Math.max(0, now - session.startedAt) : 0;
   }
 
+  pauseUser(guildId, userId, now = Date.now()) {
+    const key = this.key(guildId, userId);
+    const session = this.sessions.get(key);
+    if (!session) return;
+    this.database.addVoiceTime(
+      guildId,
+      userId,
+      Math.max(0, now - session.startedAt)
+    );
+    this.sessions.delete(key);
+  }
+
+  resumeUser(guild, member, now = Date.now()) {
+    const state = guild.voiceStates.cache.get(member.id);
+    if (!isCountedVoiceState(state, guild)) return;
+    const key = this.key(guild.id, member.id);
+    if (this.sessions.has(key)) return;
+    this.sessions.set(key, {
+      guildId: guild.id,
+      userId: member.id,
+      member,
+      startedAt: now,
+    });
+  }
+
   handleStateChange(oldState, newState, now = Date.now()) {
     const guild = newState.guild ?? oldState.guild;
     const member = newState.member ?? oldState.member;

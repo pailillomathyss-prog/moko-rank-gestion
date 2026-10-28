@@ -9,6 +9,8 @@ import {
 } from "discord.js";
 import { RankDatabase } from "./database.js";
 import { createRolePanel } from "./panel.js";
+import { createTestPanel } from "./test-panel.js";
+import { TestSessionManager } from "./test-session-manager.js";
 import {
   formatCount,
   formatHours,
@@ -42,6 +44,14 @@ const client = new Client({
 
 const cycleLocks = new Map();
 const memberRoleLocks = new Map();
+const testManager = new TestSessionManager({
+  client,
+  database,
+  voiceTracker,
+  memberRoleLocks,
+  ranks: RANKS,
+  ensureCurrentCycle,
+});
 
 async function withCycleLock(guildId, operation) {
   const previous = cycleLocks.get(guildId) ?? Promise.resolve();
@@ -61,6 +71,7 @@ async function ensureCurrentCycle(guild) {
 
     while (settings.nextResetAt <= now) {
       const resetAt = settings.nextResetAt;
+      await testManager.finishForGuild(guild.id);
       voiceTracker.flushGuildAt(guild.id, resetAt);
       const userIds = database.getTrackedUserIds(guild.id);
       await removeConfiguredRoles(guild, userIds, settings.roleIds);
@@ -132,6 +143,8 @@ function statsWithLiveVoice(guildId, userId) {
 }
 
 async function applyMemberRank(member) {
+  if (testManager.has(member.guild.id, member.id)) return;
+
   const settings = database.ensureGuild(member.guild.id);
   const availableRoleIds = settings.roleIds.map((roleId) =>
     roleId && member.guild.roles.cache.has(roleId) ? roleId : null
@@ -275,6 +288,12 @@ function createHelpEmbed() {
         name: "+panel retirer <palier>",
         value: "Retire le rôle configuré pour un palier de 1 à 5.",
         inline: false,
+      },
+      {
+        name: "+testpanel",
+        value:
+          "Ouvre un test temporaire : un message normal fait passer au palier suivant, sans changer les vrais compteurs. Alias : +test.",
+        inline: false,
       }
     )
     .setFooter({
@@ -329,6 +348,19 @@ async function handlePanelCommand(message, args) {
   await message.reply(createRolePanelResponse(message.guild, settings));
 }
 
+async function handleTestPanelCommand(message) {
+  if (!message.member || !canManageRoles(message.member)) {
+    await message.reply("Il te faut la permission **Gérer les rôles**.");
+    return;
+  }
+
+  const settings = await ensureCurrentCycle(message.guild);
+  await message.reply({
+    ...createTestPanel(message.guild, settings),
+    content: "Panneau de test réservé aux membres autorisés à gérer les rôles.",
+  });
+}
+
 async function handlePrefixCommand(message) {
   const body = message.content.slice(PREFIX.length).trim();
   const [command = "", ...args] = body.split(/\s+/);
@@ -346,6 +378,11 @@ async function handlePrefixCommand(message) {
 
   if (normalizedCommand === "panel") {
     await handlePanelCommand(message, args);
+    return;
+  }
+
+  if (normalizedCommand === "testpanel" || normalizedCommand === "test") {
+    await handleTestPanelCommand(message);
     return;
   }
 
@@ -374,6 +411,7 @@ client.once("ready", async () => {
     try {
       database.ensureGuild(guild.id);
       voiceTracker.startFromGuild(guild);
+      await testManager.restoreInterrupted(guild);
       await ensureCurrentCycle(guild);
     } catch (error) {
       console.error(`Could not initialize guild ${guild.id}.`, error);
@@ -406,6 +444,11 @@ client.on("messageCreate", async (message) => {
     }
 
     await ensureCurrentCycle(message.guild);
+    if (testManager.has(message.guild.id, message.author.id)) {
+      await testManager.handleMessage(message);
+      return;
+    }
+
     database.addMessage(message.guild.id, message.author.id);
     const member =
       message.member ??
@@ -426,6 +469,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 
   try {
     await ensureCurrentCycle(guild);
+    if (testManager.has(guild.id, member.id)) return;
     const affectedMember = voiceTracker.handleStateChange(oldState, newState);
     if (affectedMember) await safelySyncMemberRank(affectedMember);
   } catch (error) {
@@ -437,6 +481,28 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  if (interaction.isButton()) {
+    if (
+      interaction.customId === "moko:test:start" ||
+      interaction.customId === "moko:test:stop"
+    ) {
+      try {
+        await testManager.handleButton(interaction);
+      } catch (error) {
+        console.error("Could not process a test-panel action.", error);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction
+            .reply({
+              content: "Le test n’a pas pu être lancé. Vérifie les permissions du bot.",
+              ephemeral: true,
+            })
+            .catch(() => undefined);
+        }
+      }
+    }
+    return;
+  }
+
   if (!interaction.isRoleSelectMenu()) return;
   const match = /^moko:rank-role:([1-5])$/.exec(interaction.customId);
   if (!match || !interaction.guild) return;
@@ -529,9 +595,16 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.on("guildCreate", (guild) => {
-  database.ensureGuild(guild.id);
-  console.info(`Joined guild ${guild.id}.`);
+client.on("guildCreate", async (guild) => {
+  try {
+    database.ensureGuild(guild.id);
+    voiceTracker.startFromGuild(guild);
+    await testManager.restoreInterrupted(guild);
+    await ensureCurrentCycle(guild);
+    console.info(`Joined guild ${guild.id}.`);
+  } catch (error) {
+    console.error(`Could not initialize newly joined guild ${guild.id}.`, error);
+  }
 });
 
 client.on("error", (error) => {

@@ -28,6 +28,16 @@ export class RankDatabase {
 
       CREATE INDEX IF NOT EXISTS member_stats_guild_messages
         ON member_stats (guild_id, messages DESC);
+
+      CREATE TABLE IF NOT EXISTS test_sessions (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        role_ids_json TEXT NOT NULL,
+        original_role_ids_json TEXT NOT NULL,
+        current_level INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (guild_id, user_id)
+      );
     `);
 
     this.insertGuild = this.db.prepare(`
@@ -57,6 +67,30 @@ export class RankDatabase {
     this.trackedMembers = this.db.prepare(
       "SELECT user_id FROM member_stats WHERE guild_id = ?"
     );
+    this.selectTestSessions = this.db.prepare(
+      "SELECT * FROM test_sessions WHERE guild_id = ?"
+    );
+    this.insertTestSession = this.db.prepare(`
+      INSERT INTO test_sessions (
+        guild_id, user_id, channel_id, role_ids_json,
+        original_role_ids_json, current_level
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (guild_id, user_id) DO UPDATE SET
+        channel_id = excluded.channel_id,
+        role_ids_json = excluded.role_ids_json,
+        original_role_ids_json = excluded.original_role_ids_json,
+        current_level = excluded.current_level
+    `);
+    this.updateTestLevel = this.db.prepare(`
+      UPDATE test_sessions
+      SET current_level = ?
+      WHERE guild_id = ? AND user_id = ?
+    `);
+    this.deleteTestSessionStatement = this.db.prepare(`
+      DELETE FROM test_sessions
+      WHERE guild_id = ? AND user_id = ?
+    `);
   }
 
   ensureGuild(guildId, now = Date.now()) {
@@ -103,6 +137,36 @@ export class RankDatabase {
 
   getTrackedUserIds(guildId) {
     return this.trackedMembers.all(guildId).map((row) => row.user_id);
+  }
+
+  saveTestSession(session) {
+    this.insertTestSession.run(
+      session.guildId,
+      session.userId,
+      session.channelId,
+      JSON.stringify(session.roleIds),
+      JSON.stringify(session.originalRoleIds),
+      session.currentLevel
+    );
+  }
+
+  getTestSessions(guildId) {
+    return this.selectTestSessions.all(guildId).map((row) => ({
+      guildId: row.guild_id,
+      userId: row.user_id,
+      channelId: row.channel_id,
+      roleIds: JSON.parse(row.role_ids_json),
+      originalRoleIds: JSON.parse(row.original_role_ids_json),
+      currentLevel: row.current_level,
+    }));
+  }
+
+  updateTestSessionLevel(guildId, userId, currentLevel) {
+    this.updateTestLevel.run(currentLevel, guildId, userId);
+  }
+
+  deleteTestSession(guildId, userId) {
+    this.deleteTestSessionStatement.run(guildId, userId);
   }
 
   resetCycle(guildId, cycleStartedAt) {
