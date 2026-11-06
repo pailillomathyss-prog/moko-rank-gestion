@@ -8,7 +8,10 @@ import {
   buildJailRoomEmbed,
   jailCommand,
 } from "../src/commands.js";
-import { createMembershipMonitor } from "../src/membership-monitor.js";
+import {
+  createMembershipMonitor,
+  scanGuildOverlap,
+} from "../src/membership-monitor.js";
 
 test("jail command exposes setup, jail, release, and status", () => {
   const command = jailCommand.toJSON();
@@ -25,9 +28,8 @@ test("jail guide explains setup, permissions, rank progression, and limits", () 
   assert.match(text, /\/jail setup/);
   assert.match(text, /Gérer le serveur/);
   assert.match(text, /rang suivant/);
-  assert.match(text, /sans parcourir les listes de membres existantes/);
+  assert.match(text, /scan immédiat/);
   assert.match(text, /\/jail surveillance activer/);
-  assert.match(text, /sans parcourir les listes de membres existantes/);
 });
 
 test("jail room embed explains the reason, brigade contact, and release process", () => {
@@ -101,6 +103,43 @@ test("membership monitoring requires opt-in and only checks join events", async 
   } finally {
     db.close();
   }
+});
+
+test("adding an approved guild scans overlaps and skips bots", async () => {
+  const homeMembers = new Map([
+    ["member-a", { id: "member-a" }],
+    ["member-b", { id: "member-b" }],
+  ]);
+  const monitoredMembers = new Map([
+    ["member-a", { id: "member-a", user: { bot: false } }],
+    ["member-b", { id: "member-b", user: { bot: false } }],
+    ["member-c", { id: "member-c", user: { bot: false } }],
+    ["bot", { id: "bot", user: { bot: true } }],
+  ]);
+  const homeGuild = {
+    id: "home",
+    members: { fetch: async () => homeMembers },
+  };
+  const monitoredGuild = {
+    id: "monitored",
+    members: { fetch: async () => monitoredMembers },
+  };
+  const jailed = [];
+  const result = await scanGuildOverlap(
+    homeGuild,
+    monitoredGuild,
+    async (guild, member) => {
+      jailed.push(`${guild.id}:${member.id}`);
+      return member.id === "member-a";
+    },
+  );
+
+  assert.deepEqual(jailed, ["home:member-a", "home:member-b"]);
+  assert.equal(result.monitoredMembers, 4);
+  assert.equal(result.matches, 2);
+  assert.equal(result.jailed, 1);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.failed, 0);
 });
 
 test("jail restrictions deny access and speaking in existing channels", async () => {

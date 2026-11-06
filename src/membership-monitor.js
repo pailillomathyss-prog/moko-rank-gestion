@@ -47,3 +47,57 @@ export function createMembershipMonitor(database, client, autoJailMember) {
     }
   };
 }
+
+export async function scanGuildOverlap(
+  homeGuild,
+  monitoredGuild,
+  autoJailMember,
+  isStillAuthorized = () => true,
+) {
+  if (!isStillAuthorized()) {
+    return {
+      homeMembers: 0,
+      monitoredMembers: 0,
+      matches: 0,
+      jailed: 0,
+      skipped: 0,
+      failed: 0,
+      cancelled: true,
+    };
+  }
+  const homeMembers = await homeGuild.members.fetch();
+  const monitoredMembers = await monitoredGuild.members.fetch();
+  const result = {
+    homeMembers: homeMembers.size,
+    monitoredMembers: monitoredMembers.size,
+    matches: 0,
+    jailed: 0,
+    skipped: 0,
+    failed: 0,
+    cancelled: false,
+  };
+
+  for (const [userId, monitoredMember] of monitoredMembers) {
+    if (!isStillAuthorized()) {
+      result.cancelled = true;
+      break;
+    }
+    if (monitoredMember.user.bot || !homeMembers.has(userId)) continue;
+    result.matches += 1;
+    const homeMember = homeMembers.get(userId);
+    try {
+      if (await autoJailMember(homeGuild, homeMember, monitoredGuild)) {
+        result.jailed += 1;
+      } else {
+        result.skipped += 1;
+      }
+    } catch (error) {
+      result.failed += 1;
+      console.error(
+        `Jail automatique impossible pour ${userId} dans ${homeGuild.id}.`,
+        error,
+      );
+    }
+  }
+  return result;
+}

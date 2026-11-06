@@ -4,6 +4,7 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
+import { scanGuildOverlap } from "./membership-monitor.js";
 
 const MEMBER_NAME = "membre";
 const RANK_COUNT = 5;
@@ -133,12 +134,12 @@ export function buildJailGuide(settings) {
       {
         name: "À savoir",
         value:
-          "Le bot applique les restrictions aux salons existants et nouveaux. Les permissions d’autres rôles peuvent affecter l’accès effectif. La détection des serveurs surveillés ne fonctionne qu’avec l’accord de leur équipe dirigeante et après installation du bot; elle traite les événements d’arrivée, sans parcourir les listes de membres existantes.",
+          "Le bot applique les restrictions aux salons existants et nouveaux. Les permissions d’autres rôles peuvent affecter l’accès effectif. La détection surveille uniquement les serveurs installés et autorisés; l’ajout d’un ID lance un scan immédiat, puis les nouvelles arrivées sont suivies.",
       },
       {
         name: "Détection inter-serveurs",
         value:
-          "Chaque serveur surveillé doit d’abord lancer `/jail surveillance activer`. Ensuite, un responsable de ton serveur peut utiliser `/jail serveurs ajouter id:...`. Le bot jailera les membres concernés lors d’une arrivée détectée. La libération reste manuelle.",
+          "Chaque serveur surveillé doit d’abord lancer `/jail surveillance activer`. Ensuite, un responsable de ton serveur utilise `/jail serveurs ajouter id:...`; le bot scanne les membres actuels et jail les correspondances, puis traite les nouvelles arrivées. La libération reste manuelle.",
       },
     )
     .setFooter({
@@ -159,7 +160,7 @@ export function buildJailRoomEmbed() {
       {
         name: "Pourquoi suis-je ici ?",
         value:
-          "La brigade a enregistré le motif de ton jail. Si la mesure est automatique, le bot a détecté ton arrivée dans un serveur surveillé dont l’équipe dirigeante a donné son accord. Si tu penses qu’il s’agit d’une erreur, demande une vérification à la brigade.",
+          "La brigade a enregistré le motif de ton jail. Si la mesure est automatique, le bot a détecté ta présence dans un serveur surveillé dont l’équipe dirigeante a donné son accord. La détection peut avoir lieu lors d’un scan ou d’une arrivée. Si tu penses qu’il s’agit d’une erreur, demande une vérification à la brigade.",
       },
       {
         name: "Que faire maintenant ?",
@@ -484,6 +485,7 @@ export async function setupJail(guild, database) {
 export class JailCommandHandler {
   constructor(database) {
     this.database = database;
+    this.autoJailInFlight = new Set();
   }
 
   async handle(interaction) {
@@ -628,6 +630,12 @@ export class JailCommandHandler {
       );
       return;
     }
+    if (!hasJailSetup(this.database.getSettings(guild.id))) {
+      await interaction.editReply(
+        "Configure d’abord le système avec `/jail setup` avant d’ajouter un serveur à surveiller.",
+      );
+      return;
+    }
     const targetGuild = interaction.client.guilds.cache.get(id);
     if (!targetGuild) {
       await interaction.editReply(
@@ -643,8 +651,61 @@ export class JailCommandHandler {
     }
     this.database.addMonitoredGuild(guild.id, id, actor.id);
     await interaction.editReply(
-      `**${targetGuild.name}** est ajouté. Les nouvelles arrivées détectées peuvent déclencher le jail des membres déjà présents dans ton serveur. Les membres existants ne sont pas parcourus automatiquement.`,
+      `**${targetGuild.name}** est ajouté. Le scan des membres actuels démarre; les correspondances seront jailées et le résultat apparaîtra dans <#${this.database.getSettings(guild.id).log_channel_id}>.`,
     );
+    void this.scanMonitoredGuild(guild, targetGuild);
+  }
+
+  async scanMonitoredGuild(homeGuild, monitoredGuild) {
+    const settings = this.database.getSettings(homeGuild.id);
+    const stillAuthorized = () =>
+      this.database.isMembershipMonitoringAllowed(monitoredGuild.id) &&
+      this.database.getMonitoredGuilds(homeGuild.id).includes(monitoredGuild.id);
+    try {
+      const result = await scanGuildOverlap(
+        homeGuild,
+        monitoredGuild,
+        (guild, member, sourceGuild) =>
+          this.autoJail(guild, member, sourceGuild),
+        stillAuthorized,
+      );
+      await homeGuild.channels.cache.get(settings.log_channel_id)?.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(result.failed ? 0xed4245 : 0x57f287)
+            .setTitle(
+              result.cancelled
+                ? "Scan inter-serveurs interrompu"
+                : "Scan inter-serveurs terminé",
+            )
+            .setDescription(
+              `Serveur vérifié : ${monitoredGuild.name} (\`${monitoredGuild.id}\`)`,
+            )
+            .addFields(
+              {
+                name: "Membres parcourus",
+                value: `${result.monitoredMembers}`,
+                inline: true,
+              },
+              { name: "Correspondances", value: `${result.matches}`, inline: true },
+              { name: "Jailés", value: `${result.jailed}`, inline: true },
+              { name: "Ignorés", value: `${result.skipped}`, inline: true },
+              { name: "Échecs", value: `${result.failed}`, inline: true },
+            )
+            .setTimestamp(),
+        ],
+      });
+    } catch (error) {
+      console.error(
+        `Scan inter-serveurs impossible (${homeGuild.id}, ${monitoredGuild.id}).`,
+        error,
+      );
+      await homeGuild.channels.cache.get(settings.log_channel_id)?.send({
+        content: `Le scan de **${monitoredGuild.name}** a échoué. Vérifie l’intention Server Members, les accès du bot et les logs d’hébergement.`,
+      }).catch((logError) => {
+        console.error("Impossible d’annoncer l’échec du scan.", logError);
+      });
+    }
   }
 
   async jail(interaction, actor, settings) {
@@ -702,6 +763,17 @@ export class JailCommandHandler {
   }
 
   async autoJail(guild, target, monitoredGuild) {
+    const lock = `${guild.id}:${target.id}`;
+    if (this.autoJailInFlight.has(lock)) return false;
+    this.autoJailInFlight.add(lock);
+    try {
+      return await this.applyAutoJail(guild, target, monitoredGuild);
+    } finally {
+      this.autoJailInFlight.delete(lock);
+    }
+  }
+
+  async applyAutoJail(guild, target, monitoredGuild) {
     const settings = this.database.getSettings(guild.id);
     if (!hasJailSetup(settings) || !this.database.isMembershipMonitoringAllowed(monitoredGuild.id)) {
       return false;
@@ -733,11 +805,24 @@ export class JailCommandHandler {
           )
           .setTimestamp(),
       ],
+    }).catch((error) => {
+      console.error(`Jail effectué, mais log impossible (${target.id}).`, error);
     });
-    const jailChannel = guild.channels.cache.get(settings.jail_channel_id);
-    await jailChannel?.send({
-      content: `<@${target.id}> a été placé en jail automatiquement après une arrivée détectée dans un serveur autorisé. La brigade peut expliquer la procédure de libération.`,
-      allowedMentions: { users: [target.id] },
+    await target.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xed4245)
+          .setTitle("Mise en jail automatique")
+          .setDescription(
+            `Tu as été placé en jail dans **${guild.name}** après détection de ta présence dans un serveur surveillé. Motif : ${reason}`,
+          )
+          .addFields({
+            name: "Contester ou demander une explication",
+            value: `Contacte la brigade dans <#${settings.jail_channel_id}> du serveur **${guild.name}**.`,
+          }),
+      ],
+    }).catch(() => {
+      console.info(`DM de notification impossible pour ${target.id}.`);
     });
     return true;
   }
