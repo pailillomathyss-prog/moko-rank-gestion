@@ -9,7 +9,7 @@ Bot minimal avec trois fonctions : gestion du staff, modération et brigade jail
 3. Renseigne `DISCORD_BOT_TOKEN` dans l’environnement. `DATA_DIR` est facultatif et vaut `./data`.
 4. Lance `pnpm install`, puis `pnpm start`.
 
-Les commandes slash sont enregistrées dans chaque serveur au démarrage. `/help` affiche le guide.
+Les commandes slash sont enregistrées dans chaque serveur au démarrage. `/help` affiche quatre embeds privés : gestion du staff, modération, permissions de la brigade et étapes du jail.
 
 ## Commandes
 
@@ -19,3 +19,14 @@ Les commandes slash sont enregistrées dans chaque serveur au démarrage. `/help
 - Jail : `/jail` place un membre en jail et `/unjail` le libère.
 
 Les réglages et avertissements sont conservés dans SQLite. Les commandes vérifient les permissions Discord et la hiérarchie des rôles.
+
+## Configuration du jail
+
+1. Crée un rôle `Brigade`, un rôle `Jail` et un salon textuel réservé aux membres jailés.
+2. Donne au rôle `Brigade` uniquement aux agents autorisés.
+3. Avec la permission **Gérer le serveur**, lance `/brigade role role:@Brigade`.
+4. Lance `/brigade jail role:@Jail salon:#jail`, puis vérifie avec `/brigade etat`.
+5. Le bot applique les restrictions au rôle Jail dans les salons existants, en laissant l’accès au salon configuré. Il lui faut **Gérer les rôles** et son rôle doit être au-dessus du rôle Jail.
+6. Un membre de la brigade ou un responsable lance `/jail membre:@Membre raison:Motif` pour jailer, puis `/unjail membre:@Membre` pour libérer.
+
+Le jail est local à ce serveur : le bot ne consulte pas les autres serveurs d’un membre. Les autorisations accordées par d’autres rôles peuvent changer l’accès effectif aux salons. Après la création de nouveaux salons, relance `/brigade jail` afin d’y appliquer les restrictions.

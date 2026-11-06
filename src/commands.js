@@ -162,29 +162,120 @@ export const slashCommands = [
     .addUserOption(member),
 ];
 
-export function createHelpEmbed() {
-  return new EmbedBuilder()
+export function createHelpEmbeds() {
+  const staff = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle("Commandes de gestion")
-    .setDescription("Bot simple : gestion du staff, modération et brigade jail. Utilise les commandes `/` et choisis les options proposées par Discord.")
+    .setTitle("Gestion du staff")
+    .setDescription(
+      "Commandes pour définir le rôle staff et gérer les membres qui le portent.",
+    )
     .addFields(
       {
-        name: "Staff",
-        value: "`/staff role` configure le rôle staff.\n`/staff ajouter` et `/staff retirer` gèrent les membres.\n`/staff liste` affiche les membres du staff.",
+        name: "Commandes",
+        value:
+          "`/staff role role:@Staff` — définit le rôle staff.\n`/staff ajouter membre:@Membre` — attribue ce rôle.\n`/staff retirer membre:@Membre` — retire ce rôle.\n`/staff liste` — affiche les membres staff présents dans le cache du bot.",
       },
       {
-        name: "Modération",
-        value: "`/mod kick`, `/mod ban`, `/mod unban`, `/mod timeout`, `/mod untimeout`.\n`/mod clear` supprime 1 à 100 messages.\n`/mod warn`, `/mod warnings`, `/mod effacer_warnings` gèrent les avertissements.",
+        name: "Permission requise",
+        value:
+          "Toutes les commandes `/staff` exigent la permission Discord **Gérer les rôles**. Le rôle staff ne donne pas automatiquement de permissions de modération.",
       },
       {
-        name: "Brigade jail",
-        value: "`/brigade role` définit le rôle de la brigade.\n`/brigade jail` configure le rôle jail et le salon.\n`/brigade etat` affiche la configuration.\n`/jail` et `/unjail` sont réservés à la brigade.",
-      },
-      {
-        name: "Permissions",
-        value: "La gestion staff demande **Gérer les rôles**. Les commandes de modération vérifient la permission Discord correspondante. Les commandes jail sont réservées au rôle brigade ou aux responsables du serveur.",
+        name: "Limites de sécurité",
+        value:
+          "Le rôle choisi ne peut pas être administrateur et doit être placé sous le rôle du bot. Un membre ne peut gérer que des membres plus bas que son propre rôle (sauf le propriétaire du serveur).",
       },
     );
+
+  const moderation = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle("Modération")
+    .setDescription("Chaque commande vérifie la permission Discord indiquée.")
+    .addFields(
+      {
+        name: "Expulsions et bannissements",
+        value:
+          "`/mod kick` — **Expulser des membres**.\n`/mod ban` et `/mod unban` — **Bannir des membres**. Pour `/mod unban`, indique l’ID Discord.",
+      },
+      {
+        name: "Timeouts",
+        value:
+          "`/mod timeout` et `/mod untimeout` — **Modérer les membres**. Durée acceptée : de 10 secondes à 28 jours, par exemple `10m`, `2h` ou `1d`.",
+      },
+      {
+        name: "Messages et avertissements",
+        value:
+          "`/mod clear` — **Gérer les messages**, de 1 à 100 messages récents.\n`/mod warn`, `/mod warnings` et `/mod effacer_warnings` — **Gérer les messages**. Les avertissements sont conservés dans la base SQLite.",
+      },
+      {
+        name: "Hiérarchie",
+        value:
+          "Le modérateur ne peut pas cibler un membre ayant un rôle égal ou supérieur au sien. Discord peut aussi bloquer une action si le rôle du bot est trop bas.",
+      },
+    );
+
+  const brigade = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle("Brigade jail — permissions")
+    .setDescription(
+      "Le rôle brigade est une autorisation vérifiée par le bot ; il ne confère pas de permissions Discord supplémentaires.",
+    )
+    .addFields(
+      {
+        name: "Configurer",
+        value:
+          "`/brigade role role:@Brigade` — définit le rôle autorisé à jail/libérer.\n`/brigade jail role:@Jail salon:#jail` — définit le rôle de restriction et le salon dédié.\n`/brigade etat` — vérifie les réglages.",
+      },
+      {
+        name: "Qui peut configurer ?",
+        value:
+          "Les commandes de configuration `/brigade` exigent **Gérer le serveur**. Le bot doit aussi avoir **Gérer les rôles** et son rôle doit être au-dessus du rôle jail.",
+      },
+      {
+        name: "Qui peut jail/libérer ?",
+        value:
+          "Les commandes `/jail` et `/unjail` sont réservées aux membres portant le rôle brigade configuré, ainsi qu’aux membres ayant **Gérer le serveur**.",
+      },
+    );
+
+  const jailGuide = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("Jail — fonctionnement et étapes")
+    .setDescription(
+      "Le jail est appliqué dans ce serveur uniquement. Le bot ne vérifie pas l’appartenance d’un membre à d’autres serveurs.",
+    )
+    .addFields(
+      {
+        name: "1. Préparer les rôles et le salon",
+        value:
+          "Crée un rôle `Brigade` pour les agents autorisés et attribue-le aux membres concernés. Crée un rôle `Jail` et un salon textuel privé, par exemple `#jail`.",
+      },
+      {
+        name: "2. Configurer le bot",
+        value:
+          "Avec **Gérer le serveur**, lance `/brigade role role:@Brigade`, puis `/brigade jail role:@Jail salon:#jail`. Termine avec `/brigade etat` pour vérifier.",
+      },
+      {
+        name: "3. Mettre un membre en jail",
+        value:
+          "Un membre autorisé lance `/jail membre:@Membre raison:Motif`. Le bot attribue le rôle Jail, enregistre le motif et l’agent dans SQLite, puis envoie une annonce avec mention dans le salon configuré.",
+      },
+      {
+        name: "4. Libérer le membre",
+        value:
+          "Un membre autorisé lance `/unjail membre:@Membre`. Le bot retire le rôle Jail et supprime l’enregistrement du jail.",
+      },
+      {
+        name: "Accès et précautions",
+        value:
+          "La configuration applique des refus d’accès/salon, d’écriture, de commandes, de connexion vocale et de prise de parole au rôle Jail dans les salons existants, sauf le salon jail où ces accès sont autorisés. Le bot doit avoir **Gérer les rôles** et son rôle doit être au-dessus du rôle Jail. Les permissions accordées par d’autres rôles peuvent modifier l’accès effectif. Si de nouveaux salons sont créés, relance `/brigade jail` pour appliquer les restrictions.",
+      },
+    )
+    .setFooter({
+      text: "Le jail ne bannit pas et ne retire pas les autres rôles du membre.",
+    });
+
+  return [staff, moderation, brigade, jailGuide];
 }
 
 function hasPermission(member, permission) {
@@ -265,7 +356,7 @@ export class CommandHandler {
     this.database.ensureGuild(guild.id);
 
     if (interaction.commandName === "help") {
-      await interaction.reply({ embeds: [createHelpEmbed()], ephemeral: true });
+      await interaction.reply({ embeds: createHelpEmbeds(), ephemeral: true });
       return;
     }
 
