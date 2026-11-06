@@ -52,6 +52,49 @@ export const jailCommand = new SlashCommandBuilder()
   )
   .addSubcommand((sub) =>
     sub.setName("etat").setDescription("Affiche la configuration du jail."),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("surveillance")
+      .setDescription("Autorise ou révoque le contrôle des arrivées dans ce serveur.")
+      .addBooleanOption((option) =>
+        option
+          .setName("activer")
+          .setDescription("Autoriser les serveurs communautaires configurés.")
+          .setRequired(true),
+      ),
+  )
+  .addSubcommandGroup((group) =>
+    group
+      .setName("serveurs")
+      .setDescription("Configure les serveurs communautaires autorisés.")
+      .addSubcommand((sub) =>
+        sub
+          .setName("ajouter")
+          .setDescription("Ajoute un serveur autorisé à la surveillance.")
+          .addStringOption((option) =>
+            option
+              .setName("id")
+              .setDescription("ID du serveur où le bot est installé.")
+              .setRequired(true)
+              .setMaxLength(22),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName("retirer")
+          .setDescription("Retire un serveur de la surveillance.")
+          .addStringOption((option) =>
+            option
+              .setName("id")
+              .setDescription("ID du serveur à retirer.")
+              .setRequired(true)
+              .setMaxLength(22),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub.setName("liste").setDescription("Liste les serveurs configurés."),
+      ),
   );
 
 export function buildJailGuide(settings) {
@@ -90,7 +133,12 @@ export function buildJailGuide(settings) {
       {
         name: "À savoir",
         value:
-          "Le bot applique les restrictions aux salons existants et aux nouveaux salons. Les permissions autorisées par d’autres rôles peuvent affecter l’accès effectif. Il ne peut pas découvrir les membres de serveurs Discord auxquels il n’a pas accès.",
+          "Le bot applique les restrictions aux salons existants et nouveaux. Les permissions d’autres rôles peuvent affecter l’accès effectif. La détection des serveurs surveillés ne fonctionne qu’avec l’accord de leur équipe dirigeante et après installation du bot; elle traite les événements d’arrivée, sans parcourir les listes de membres existantes.",
+      },
+      {
+        name: "Détection inter-serveurs",
+        value:
+          "Chaque serveur surveillé doit d’abord lancer `/jail surveillance activer`. Ensuite, un responsable de ton serveur peut utiliser `/jail serveurs ajouter id:...`. Le bot jailera les membres concernés lors d’une arrivée détectée. La libération reste manuelle.",
       },
     )
     .setFooter({
@@ -432,12 +480,46 @@ export class JailCommandHandler {
         return;
       }
       const settings = this.database.getSettings(guild.id);
+      const group = interaction.options.getSubcommandGroup(false);
+      if (action === "surveillance") {
+        if (!hasPermission(actor, PermissionFlagsBits.ManageGuild)) {
+          await interaction.editReply(
+            "Seuls les responsables avec Gérer le serveur peuvent modifier cet accord.",
+          );
+          return;
+        }
+        const enabled = interaction.options.getBoolean("activer", true);
+        if (enabled) {
+          this.database.allowMembershipMonitoring(guild.id, actor.id);
+          await interaction.editReply(
+            "Accord enregistré : les communautés qui ajoutent ce serveur à leur liste pourront jailer automatiquement les membres concernés à leur arrivée ici. Utilise `/jail surveillance activer:false` pour révoquer.",
+          );
+        } else {
+          this.database.revokeMembershipMonitoring(guild.id);
+          await interaction.editReply(
+            "Accord révoqué. Les arrivées futures depuis ce serveur ne déclencheront plus de jail automatique.",
+          );
+        }
+        return;
+      }
+      if (group === "serveurs") {
+        await this.handleMonitoredGuilds(interaction, actor);
+        return;
+      }
       if (action === "etat") {
         const embed = buildJailGuide(settings);
+        const monitored = this.database
+          .getMonitoredGuilds(guild.id)
+          .map((id) => {
+            const monitoredGuild = interaction.client.guilds.cache.get(id);
+            return monitoredGuild
+              ? `• ${monitoredGuild.name} (\`${id}\`) — ${this.database.isMembershipMonitoringAllowed(id) ? "actif" : "accord révoqué"}`
+              : `• serveur inaccessible (\`${id}\`) — inactif`;
+          });
         embed.addFields({
           name: "Configuration actuelle",
           value: hasJailSetup(settings)
-            ? `Brigade : <@&${settings.brigade_role_id}>\nJail : <@&${settings.jail_role_id}>\nSalon : <#${settings.jail_channel_id}>\nLogs : <#${settings.log_channel_id}>`
+            ? `Brigade : <@&${settings.brigade_role_id}>\nJail : <@&${settings.jail_role_id}>\nSalon : <#${settings.jail_channel_id}>\nLogs : <#${settings.log_channel_id}>\nSurveillance autorisée ici : ${this.database.isMembershipMonitoringAllowed(guild.id) ? "oui" : "non"}\nServeurs suivis : ${monitored.length ? monitored.join("\n") : "aucun"}`
             : "Système non configuré. Un responsable doit lancer `/jail setup`.",
         });
         await interaction.editReply({ embeds: [embed] });
@@ -464,6 +546,62 @@ export class JailCommandHandler {
       console.error(`Jail command failed in guild ${guild.id}.`, error);
       await interaction.editReply(`Action impossible : ${error.message}`);
     }
+  }
+
+  async handleMonitoredGuilds(interaction, actor) {
+    const guild = interaction.guild;
+    if (!hasPermission(actor, PermissionFlagsBits.ManageGuild)) {
+      await interaction.editReply(
+        "La gestion des serveurs suivis exige Gérer le serveur.",
+      );
+      return;
+    }
+    const action = interaction.options.getSubcommand();
+    if (action === "liste") {
+      const guilds = this.database.getMonitoredGuilds(guild.id);
+      await interaction.editReply(
+        guilds.length
+          ? `**Serveurs autorisés**\n${guilds
+              .map((id) => {
+                const target = interaction.client.guilds.cache.get(id);
+                return `• ${target?.name ?? "inaccessible"} (\`${id}\`) — ${this.database.isMembershipMonitoringAllowed(id) ? "actif" : "accord révoqué"}`;
+              })
+              .join("\n")}`
+          : "Aucun serveur autorisé.",
+      );
+      return;
+    }
+    const id = interaction.options.getString("id", true);
+    if (!/^\d{15,22}$/.test(id) || id === guild.id) {
+      await interaction.editReply("Indique l’ID valide d’un autre serveur.");
+      return;
+    }
+    if (action === "retirer") {
+      const removed = this.database.removeMonitoredGuild(guild.id, id);
+      await interaction.editReply(
+        removed
+          ? `Le serveur \`${id}\` a été retiré.`
+          : "Ce serveur n’était pas dans la liste.",
+      );
+      return;
+    }
+    const targetGuild = interaction.client.guilds.cache.get(id);
+    if (!targetGuild) {
+      await interaction.editReply(
+        "Le bot n’est pas installé dans ce serveur, ou son accès est indisponible.",
+      );
+      return;
+    }
+    if (!this.database.isMembershipMonitoringAllowed(id)) {
+      await interaction.editReply(
+        "L’équipe dirigeante de ce serveur doit d’abord lancer `/jail surveillance activer` dans ce serveur.",
+      );
+      return;
+    }
+    this.database.addMonitoredGuild(guild.id, id, actor.id);
+    await interaction.editReply(
+      `**${targetGuild.name}** est ajouté. Les nouvelles arrivées détectées peuvent déclencher le jail des membres déjà présents dans ton serveur. Les membres existants ne sont pas parcourus automatiquement.`,
+    );
   }
 
   async jail(interaction, actor, settings) {
@@ -518,6 +656,47 @@ export class JailCommandHandler {
       ],
     });
     await interaction.editReply(`${target.user.tag} a été placé en jail.`);
+  }
+
+  async autoJail(guild, target, monitoredGuild) {
+    const settings = this.database.getSettings(guild.id);
+    if (!hasJailSetup(settings) || !this.database.isMembershipMonitoringAllowed(monitoredGuild.id)) {
+      return false;
+    }
+    if (this.database.getJail(guild.id, target.id)) return false;
+    const role = guild.roles.cache.get(settings.jail_role_id);
+    const botMember = guild.members.me ?? (await guild.members.fetchMe());
+    if (
+      !role ||
+      target.id === guild.ownerId ||
+      target.permissions.has(PermissionFlagsBits.Administrator) ||
+      role.position >= botMember.roles.highest.position
+    ) {
+      return false;
+    }
+    const reason = `Présence détectée dans le serveur autorisé « ${monitoredGuild.name} » (${monitoredGuild.id}).`;
+    await target.roles.add(role, `Jail automatique: ${reason}`);
+    this.database.addJail(guild.id, target.id, reason, botMember.id);
+    const logs = guild.channels.cache.get(settings.log_channel_id);
+    await logs?.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xed4245)
+          .setTitle("Jail automatique — arrivée détectée")
+          .setThumbnail(target.displayAvatarURL({ size: 256 }))
+          .addFields(
+            { name: "Membre", value: `${target} (\`${target.id}\`)`, inline: true },
+            { name: "Serveur autorisé", value: `${monitoredGuild.name} (\`${monitoredGuild.id}\`)` },
+          )
+          .setTimestamp(),
+      ],
+    });
+    const jailChannel = guild.channels.cache.get(settings.jail_channel_id);
+    await jailChannel?.send({
+      content: `<@${target.id}> a été placé en jail automatiquement après une arrivée détectée dans un serveur autorisé. La brigade peut expliquer la procédure de libération.`,
+      allowedMentions: { users: [target.id] },
+    });
+    return true;
   }
 
   async unjail(interaction, actor, settings) {

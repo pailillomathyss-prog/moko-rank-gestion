@@ -36,6 +36,18 @@ export class JailDatabase {
         rank_level INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (guild_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS surveillance_opt_ins (
+        guild_id TEXT PRIMARY KEY,
+        approved_by TEXT NOT NULL,
+        approved_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS monitored_guilds (
+        home_guild_id TEXT NOT NULL,
+        monitored_guild_id TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY (home_guild_id, monitored_guild_id)
+      );
     `);
   }
 
@@ -119,6 +131,69 @@ export class JailDatabase {
         )
         .get(guildId, userId) ?? { unjail_count: 0, rank_level: 0 }
     );
+  }
+
+  allowMembershipMonitoring(guildId, moderatorId) {
+    this.db
+      .prepare(
+        `INSERT INTO surveillance_opt_ins (guild_id, approved_by, approved_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(guild_id) DO UPDATE SET
+           approved_by = excluded.approved_by, approved_at = excluded.approved_at`,
+      )
+      .run(guildId, moderatorId, Date.now());
+  }
+
+  revokeMembershipMonitoring(guildId) {
+    this.db
+      .prepare("DELETE FROM surveillance_opt_ins WHERE guild_id = ?")
+      .run(guildId);
+  }
+
+  isMembershipMonitoringAllowed(guildId) {
+    return Boolean(
+      this.db
+        .prepare("SELECT 1 FROM surveillance_opt_ins WHERE guild_id = ?")
+        .get(guildId),
+    );
+  }
+
+  addMonitoredGuild(homeGuildId, monitoredGuildId, moderatorId) {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO monitored_guilds
+         (home_guild_id, monitored_guild_id, added_by, added_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(homeGuildId, monitoredGuildId, moderatorId, Date.now());
+  }
+
+  removeMonitoredGuild(homeGuildId, monitoredGuildId) {
+    return this.db
+      .prepare(
+        "DELETE FROM monitored_guilds WHERE home_guild_id = ? AND monitored_guild_id = ?",
+      )
+      .run(homeGuildId, monitoredGuildId).changes;
+  }
+
+  getMonitoredGuilds(homeGuildId) {
+    return this.db
+      .prepare(
+        `SELECT monitored_guild_id FROM monitored_guilds
+         WHERE home_guild_id = ? ORDER BY added_at`,
+      )
+      .all(homeGuildId)
+      .map((row) => row.monitored_guild_id);
+  }
+
+  getHomeGuildsMonitoring(monitoredGuildId) {
+    return this.db
+      .prepare(
+        `SELECT home_guild_id FROM monitored_guilds
+         WHERE monitored_guild_id = ? ORDER BY added_at`,
+      )
+      .all(monitoredGuildId)
+      .map((row) => row.home_guild_id);
   }
 
   close() {

@@ -3,13 +3,14 @@ import test from "node:test";
 import { ChannelType } from "discord.js";
 import { JailDatabase } from "../src/database.js";
 import { applyJailRestriction, buildJailGuide, jailCommand } from "../src/commands.js";
+import { createMembershipMonitor } from "../src/membership-monitor.js";
 
 test("jail command exposes setup, jail, release, and status", () => {
   const command = jailCommand.toJSON();
   assert.equal(command.name, "jail");
   assert.deepEqual(
     command.options.map((option) => option.name),
-    ["setup", "mettre", "liberer", "etat"],
+    ["setup", "mettre", "liberer", "etat", "surveillance", "serveurs"],
   );
 });
 
@@ -19,7 +20,71 @@ test("jail guide explains setup, permissions, rank progression, and limits", () 
   assert.match(text, /\/jail setup/);
   assert.match(text, /Gérer le serveur/);
   assert.match(text, /rang suivant/);
-  assert.match(text, /ne peut pas découvrir les membres/);
+  assert.match(text, /sans parcourir les listes de membres existantes/);
+  assert.match(text, /\/jail surveillance activer/);
+  assert.match(text, /sans parcourir les listes de membres existantes/);
+});
+
+test("membership monitoring requires opt-in and only checks join events", async () => {
+  const db = new JailDatabase(":memory:");
+  try {
+    db.addMonitoredGuild("home", "approved", "admin");
+    db.addMonitoredGuild("home", "not-approved", "admin");
+    db.allowMembershipMonitoring("approved", "external-admin");
+
+    const checked = [];
+    const homeMember = { id: "member", guild: { id: "home" } };
+    const homeGuild = {
+      id: "home",
+      members: { fetch: async () => homeMember },
+    };
+    const approvedGuild = {
+      id: "approved",
+      members: { fetch: async () => ({ id: "member" }) },
+    };
+    const unapprovedGuild = {
+      id: "not-approved",
+      members: { fetch: async () => ({ id: "member" }) },
+    };
+    const client = {
+      guilds: {
+        cache: new Map([
+          ["home", homeGuild],
+          ["approved", approvedGuild],
+          ["not-approved", unapprovedGuild],
+        ]),
+      },
+    };
+    const monitor = createMembershipMonitor(
+      db,
+      client,
+      async (guild, member, sourceGuild) => {
+        checked.push({ guild: guild.id, member: member.id, source: sourceGuild.id });
+      },
+    );
+
+    await monitor(homeMember);
+    assert.deepEqual(checked, [
+      { guild: "home", member: "member", source: "approved" },
+    ]);
+
+    await monitor({
+      id: "member",
+      guild: approvedGuild,
+    });
+    assert.equal(checked.length, 2);
+    assert.deepEqual(checked[1], {
+      guild: "home",
+      member: "member",
+      source: "approved",
+    });
+
+    db.revokeMembershipMonitoring("approved");
+    await monitor({ id: "member", guild: approvedGuild });
+    assert.equal(checked.length, 2);
+  } finally {
+    db.close();
+  }
 });
 
 test("jail restrictions deny access and speaking in existing channels", async () => {

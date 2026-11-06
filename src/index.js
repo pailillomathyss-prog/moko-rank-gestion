@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { JailDatabase } from "./database.js";
 import { JailCommandHandler, jailCommand, applyJailRestriction } from "./commands.js";
+import { createMembershipMonitor } from "./membership-monitor.js";
 
 const token = process.env.DISCORD_BOT_TOKEN;
 if (!token) {
@@ -19,6 +20,11 @@ const client = new Client({
 });
 const database = new JailDatabase(process.env.DATA_DIR || "./data");
 const handler = new JailCommandHandler(database);
+const membershipMonitor = createMembershipMonitor(
+  database,
+  client,
+  (guild, member, monitoredGuild) => handler.autoJail(guild, member, monitoredGuild),
+);
 const rest = new REST({ version: "10" }).setToken(token);
 
 client.once(Events.ClientReady, async (readyClient) => {
@@ -59,6 +65,10 @@ client.on(Events.ChannelCreate, async (channel) => {
   } catch (error) {
     console.error(`Restriction du nouveau salon impossible (${channel.id}).`, error);
   }
+});
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  await membershipMonitor(member);
 });
 
 client.on(Events.Error, (error) => console.error("Erreur Discord:", error));
