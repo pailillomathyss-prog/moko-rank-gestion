@@ -34,7 +34,13 @@ export class RankDatabase {
         role_4 TEXT,
         role_5 TEXT,
         rank_log_channel_id TEXT,
-        staff_role_id TEXT
+        staff_role_id TEXT,
+        brigade_role_id TEXT,
+        jail_role_id TEXT,
+        jail_channel_id TEXT,
+        anti_raid_enabled INTEGER NOT NULL DEFAULT 0,
+        raid_threshold INTEGER NOT NULL DEFAULT 5,
+        raid_window_seconds INTEGER NOT NULL DEFAULT 10
       );
 
       CREATE TABLE IF NOT EXISTS member_stats (
@@ -99,6 +105,24 @@ export class RankDatabase {
         created_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS enemy_members (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS jailed_members (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        jailed_by TEXT NOT NULL,
+        jailed_at INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+
       CREATE INDEX IF NOT EXISTS member_warnings_guild_user
         ON member_warnings (guild_id, user_id, created_at DESC);
     `);
@@ -114,6 +138,18 @@ export class RankDatabase {
     }
     if (!guildConfigColumns.includes("staff_role_id")) {
       this.db.exec("ALTER TABLE guild_config ADD COLUMN staff_role_id TEXT");
+    }
+    for (const [column, definition] of [
+      ["brigade_role_id", "TEXT"],
+      ["jail_role_id", "TEXT"],
+      ["jail_channel_id", "TEXT"],
+      ["anti_raid_enabled", "INTEGER NOT NULL DEFAULT 0"],
+      ["raid_threshold", "INTEGER NOT NULL DEFAULT 5"],
+      ["raid_window_seconds", "INTEGER NOT NULL DEFAULT 10"],
+    ]) {
+      if (!guildConfigColumns.includes(column)) {
+        this.db.exec(`ALTER TABLE guild_config ADD COLUMN ${column} ${definition}`);
+      }
     }
 
     this.insertGuild = this.db.prepare(`
@@ -208,6 +244,44 @@ export class RankDatabase {
     `);
     this.isGlobalBlacklistedStatement = this.db.prepare(
       "SELECT 1 FROM global_blacklist WHERE user_id = ?"
+    );
+    this.setBrigadeRoleStatement = this.db.prepare(
+      "UPDATE guild_config SET brigade_role_id = ? WHERE guild_id = ?"
+    );
+    this.setJailConfigStatement = this.db.prepare(`
+      UPDATE guild_config SET jail_role_id = ?, jail_channel_id = ?
+      WHERE guild_id = ?
+    `);
+    this.setRaidSettingsStatement = this.db.prepare(`
+      UPDATE guild_config SET anti_raid_enabled = ?, raid_threshold = ?, raid_window_seconds = ?
+      WHERE guild_id = ?
+    `);
+    this.insertEnemyStatement = this.db.prepare(`
+      INSERT INTO enemy_members (guild_id, user_id, reason, added_by, added_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (guild_id, user_id) DO UPDATE SET
+        reason = excluded.reason, added_by = excluded.added_by, added_at = excluded.added_at
+    `);
+    this.removeEnemyStatement = this.db.prepare(
+      "DELETE FROM enemy_members WHERE guild_id = ? AND user_id = ?"
+    );
+    this.getEnemiesStatement = this.db.prepare(
+      "SELECT user_id, reason FROM enemy_members WHERE guild_id = ?"
+    );
+    this.getEnemyStatement = this.db.prepare(
+      "SELECT 1 FROM enemy_members WHERE guild_id = ? AND user_id = ?"
+    );
+    this.setJailedStatement = this.db.prepare(`
+      INSERT INTO jailed_members (guild_id, user_id, reason, jailed_by, jailed_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (guild_id, user_id) DO UPDATE SET
+        reason = excluded.reason, jailed_by = excluded.jailed_by, jailed_at = excluded.jailed_at
+    `);
+    this.removeJailedStatement = this.db.prepare(
+      "DELETE FROM jailed_members WHERE guild_id = ? AND user_id = ?"
+    );
+    this.getJailedStatement = this.db.prepare(
+      "SELECT * FROM jailed_members WHERE guild_id = ? AND user_id = ?"
     );
     this.insertGiveawayStatement = this.db.prepare(`
       INSERT INTO giveaways (
@@ -313,6 +387,12 @@ export class RankDatabase {
       roleIds: RANKS.map((rank) => row[`role_${rank.level}`] ?? null),
       rankLogChannelId: row.rank_log_channel_id ?? null,
       staffRoleId: row.staff_role_id ?? null,
+      brigadeRoleId: row.brigade_role_id ?? null,
+      jailRoleId: row.jail_role_id ?? null,
+      jailChannelId: row.jail_channel_id ?? null,
+      antiRaidEnabled: Boolean(row.anti_raid_enabled),
+      raidThreshold: row.raid_threshold,
+      raidWindowSeconds: row.raid_window_seconds,
     };
   }
 
@@ -331,6 +411,51 @@ export class RankDatabase {
 
   setStaffRole(guildId, roleId) {
     this.setStaffRoleStatement.run(roleId, guildId);
+  }
+
+  setBrigadeRole(guildId, roleId) {
+    this.setBrigadeRoleStatement.run(roleId, guildId);
+  }
+
+  setJailConfig(guildId, roleId, channelId) {
+    this.setJailConfigStatement.run(roleId, channelId, guildId);
+  }
+
+  setRaidSettings(guildId, enabled, threshold, windowSeconds) {
+    this.setRaidSettingsStatement.run(
+      enabled ? 1 : 0,
+      threshold,
+      windowSeconds,
+      guildId
+    );
+  }
+
+  addEnemyMember(guildId, userId, reason, addedBy, now = Date.now()) {
+    this.insertEnemyStatement.run(guildId, userId, reason, addedBy, now);
+  }
+
+  removeEnemyMember(guildId, userId) {
+    return this.removeEnemyStatement.run(guildId, userId).changes > 0;
+  }
+
+  getEnemyMembers(guildId) {
+    return this.getEnemiesStatement.all(guildId);
+  }
+
+  isEnemyMember(guildId, userId) {
+    return Boolean(this.getEnemyStatement.get(guildId, userId));
+  }
+
+  setJailedMember(guildId, userId, reason, jailedBy, now = Date.now()) {
+    this.setJailedStatement.run(guildId, userId, reason, jailedBy, now);
+  }
+
+  removeJailedMember(guildId, userId) {
+    return this.removeJailedStatement.run(guildId, userId).changes > 0;
+  }
+
+  getJailedMember(guildId, userId) {
+    return this.getJailedStatement.get(guildId, userId) ?? null;
   }
 
   addWarning(guildId, userId, moderatorId, reason, now = Date.now()) {

@@ -37,8 +37,15 @@ Le comptage commence lorsque le bot rejoint le serveur : Discord ne permet pas d
 - `+staff role @rôle`, `+staff add/remove @membre`, `+staff list`.
 - `+gbl ban <ID> confirmer [raison]`, `+gbl remove <ID>`, `+gbl list` (propriétaire du bot uniquement).
 - `+owner stats`, `+owner guilds` (propriétaire du bot uniquement).
+- `+brigade role @rôle` — réserve les commandes de sécurité à la brigade.
+- `+brigade jailrole @rôle #salon-jail` — configure le rôle de jail et la quarantaine.
+- `+brigade seuil 5 10`, `+brigade raid on/off` — règle le seuil et active l’anti-raid.
+- `+enemy add <ID> [raison]`, `+enemy remove <ID>`, `+enemy list` — liste locale d’IDs à jailer à leur arrivée.
+- `+jail @membre [raison]`, `+unjail @membre`, `+security`.
 
 Les commandes de modération vérifient les permissions Discord adaptées. La BL est globale : après `+gbl ban <ID> confirmer`, le bot bloque ses fonctionnalités pour cette personne et tente de la bannir dans tous les serveurs où il a **Bannir des membres**. `+gbl remove` retire la personne de la liste, mais ne lève pas les bans déjà posés.
+
+La brigade de sécurité utilise un rôle dédié comme autorisation interne du bot ; ce rôle ne reçoit pas automatiquement Administrateur. Le seuil anti-raid par défaut est de 5 arrivées en 10 secondes et le jail automatique est désactivé tant qu’un responsable ne l’active pas. `+brigade jailrole` installe des refus d’accès du rôle de jail sur les salons actuels (sauf le salon jail) ; les nouveaux salons sont configurés automatiquement. La commande nécessite un rôle jail dédié et un bot pouvant gérer les rôles et les permissions de salons.
 
 Les rôles sont choisis dans les menus du panneau Discord. Le rôle du bot doit être placé au-dessus des rôles de rang dans les paramètres du serveur.
 

@@ -17,6 +17,7 @@ import { createLogPanel } from "./log-panel.js";
 import { createRolePanel } from "./panel.js";
 import { createRankAnnouncement } from "./rank-announcements.js";
 import { createTestPanel } from "./test-panel.js";
+import { SecurityManager } from "./security-manager.js";
 import { TestSessionManager } from "./test-session-manager.js";
 import {
   formatCount,
@@ -90,6 +91,10 @@ const adminCommands = new AdminCommands({
       voiceTracker.pauseUser(guild.id, userId);
     }
   },
+});
+const securityManager = new SecurityManager({
+  database,
+  ownerId: process.env.BOT_OWNER_ID,
 });
 giveawayManager.isBlacklisted = isGloballyBlacklisted;
 const testManager = new TestSessionManager({
@@ -376,6 +381,12 @@ function createHelpEmbed() {
         value:
           "`+staff role/add/remove/list`, `+gbl ban/remove/list`, `+owner stats/guilds`.",
         inline: false,
+      },
+      {
+        name: "Brigade de sécurité",
+        value:
+          "`+brigade role/jailrole/seuil/raid`, `+enemy add/remove/list`, `+jail`, `+unjail`, `+security`.",
+        inline: false,
       }
     )
     .setFooter({
@@ -568,6 +579,15 @@ async function handlePrefixCommand(message) {
 
   try {
     if (await adminCommands.handle(message, normalizedCommand, args)) return;
+    if (
+      await securityManager.handleCommand(
+        message,
+        normalizedCommand,
+        args
+      )
+    ) {
+      return;
+    }
   } catch (error) {
     console.error(
       `Admin command ${normalizedCommand} failed in guild ${message.guild.id}.`,
@@ -865,6 +885,22 @@ client.on("guildMemberAdd", async (member) => {
       `Could not enforce the global blacklist for member ${member.id} in guild ${member.guild.id}.`,
       error
     );
+  }
+});
+
+client.on("guildMemberAdd", async (member) => {
+  try {
+    await securityManager.onMemberJoin(member);
+  } catch (error) {
+    console.error(`Could not run join security for ${member.id}.`, error);
+  }
+});
+
+client.on("channelCreate", async (channel) => {
+  try {
+    await securityManager.onChannelCreate(channel);
+  } catch (error) {
+    console.error(`Could not apply jail permissions to channel ${channel.id}.`, error);
   }
 });
 
