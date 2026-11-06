@@ -113,9 +113,10 @@ export function createGiveawayEmbed(giveaway, entryCount, winnerIds = null) {
 }
 
 export class GiveawayManager {
-  constructor({ client, database }) {
+  constructor({ client, database, isBlacklisted = () => false }) {
     this.client = client;
     this.database = database;
+    this.isBlacklisted = isBlacklisted;
     this.timers = new Map();
     this.endingGiveaways = new Set();
   }
@@ -193,6 +194,13 @@ export class GiveawayManager {
     if (interaction.user.bot) {
       await interaction.reply({
         content: "Les bots ne peuvent pas participer.",
+        ephemeral: true,
+      });
+      return;
+    }
+    if (this.isBlacklisted(interaction.user.id)) {
+      await interaction.reply({
+        content: "Tu ne peux pas participer aux fonctionnalités du bot.",
         ephemeral: true,
       });
       return;

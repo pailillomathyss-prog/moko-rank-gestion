@@ -33,7 +33,8 @@ export class RankDatabase {
         role_3 TEXT,
         role_4 TEXT,
         role_5 TEXT,
-        rank_log_channel_id TEXT
+        rank_log_channel_id TEXT,
+        staff_role_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS member_stats (
@@ -81,6 +82,25 @@ export class RankDatabase {
         joined_at INTEGER NOT NULL,
         PRIMARY KEY (giveaway_id, user_id)
       );
+
+      CREATE TABLE IF NOT EXISTS global_blacklist (
+        user_id TEXT PRIMARY KEY,
+        reason TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS member_warnings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        moderator_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS member_warnings_guild_user
+        ON member_warnings (guild_id, user_id, created_at DESC);
     `);
 
     const guildConfigColumns = this.db
@@ -91,6 +111,9 @@ export class RankDatabase {
       this.db.exec(
         "ALTER TABLE guild_config ADD COLUMN rank_log_channel_id TEXT"
       );
+    }
+    if (!guildConfigColumns.includes("staff_role_id")) {
+      this.db.exec("ALTER TABLE guild_config ADD COLUMN staff_role_id TEXT");
     }
 
     this.insertGuild = this.db.prepare(`
@@ -149,6 +172,43 @@ export class RankDatabase {
       SET rank_log_channel_id = ?
       WHERE guild_id = ?
     `);
+    this.setStaffRoleStatement = this.db.prepare(`
+      UPDATE guild_config SET staff_role_id = ? WHERE guild_id = ?
+    `);
+    this.addWarningStatement = this.db.prepare(`
+      INSERT INTO member_warnings (
+        guild_id, user_id, moderator_id, reason, created_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    this.getWarningsStatement = this.db.prepare(`
+      SELECT id, user_id, moderator_id, reason, created_at
+      FROM member_warnings
+      WHERE guild_id = ? AND user_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 20
+    `);
+    this.clearWarningsStatement = this.db.prepare(`
+      DELETE FROM member_warnings WHERE guild_id = ? AND user_id = ?
+    `);
+    this.addGlobalBlacklistStatement = this.db.prepare(`
+      INSERT INTO global_blacklist (user_id, reason, added_by, added_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT (user_id) DO UPDATE SET
+        reason = excluded.reason,
+        added_by = excluded.added_by,
+        added_at = excluded.added_at
+    `);
+    this.removeGlobalBlacklistStatement = this.db.prepare(
+      "DELETE FROM global_blacklist WHERE user_id = ?"
+    );
+    this.getGlobalBlacklistStatement = this.db.prepare(`
+      SELECT user_id, reason, added_by, added_at
+      FROM global_blacklist ORDER BY added_at DESC
+    `);
+    this.isGlobalBlacklistedStatement = this.db.prepare(
+      "SELECT 1 FROM global_blacklist WHERE user_id = ?"
+    );
     this.insertGiveawayStatement = this.db.prepare(`
       INSERT INTO giveaways (
         id, guild_id, channel_id, host_id, prize, winner_count,
@@ -252,6 +312,7 @@ export class RankDatabase {
       nextResetAt: row.next_reset_at,
       roleIds: RANKS.map((rank) => row[`role_${rank.level}`] ?? null),
       rankLogChannelId: row.rank_log_channel_id ?? null,
+      staffRoleId: row.staff_role_id ?? null,
     };
   }
 
@@ -266,6 +327,44 @@ export class RankDatabase {
 
   setRankLogChannel(guildId, channelId) {
     this.setRankLogChannelStatement.run(channelId, guildId);
+  }
+
+  setStaffRole(guildId, roleId) {
+    this.setStaffRoleStatement.run(roleId, guildId);
+  }
+
+  addWarning(guildId, userId, moderatorId, reason, now = Date.now()) {
+    return this.addWarningStatement.run(
+      guildId,
+      userId,
+      moderatorId,
+      reason,
+      now
+    ).lastInsertRowid;
+  }
+
+  getWarnings(guildId, userId) {
+    return this.getWarningsStatement.all(guildId, userId);
+  }
+
+  clearWarnings(guildId, userId) {
+    return this.clearWarningsStatement.run(guildId, userId).changes;
+  }
+
+  addGlobalBlacklist(userId, reason, addedBy, now = Date.now()) {
+    this.addGlobalBlacklistStatement.run(userId, reason, addedBy, now);
+  }
+
+  removeGlobalBlacklist(userId) {
+    return this.removeGlobalBlacklistStatement.run(userId).changes > 0;
+  }
+
+  getGlobalBlacklist() {
+    return this.getGlobalBlacklistStatement.all();
+  }
+
+  isGloballyBlacklisted(userId) {
+    return Boolean(this.isGlobalBlacklistedStatement.get(userId));
   }
 
   getStats(guildId, userId) {

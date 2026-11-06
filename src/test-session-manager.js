@@ -10,6 +10,7 @@ export class TestSessionManager {
     ranks,
     ensureCurrentCycle,
     announceRank,
+    isBlacklisted = () => false,
     idleTimeoutMs = 10 * 60 * 1000,
   }) {
     this.client = client;
@@ -19,6 +20,7 @@ export class TestSessionManager {
     this.ranks = ranks;
     this.ensureCurrentCycle = ensureCurrentCycle;
     this.announceRank = announceRank;
+    this.isBlacklisted = isBlacklisted;
     this.idleTimeoutMs = idleTimeoutMs;
     this.sessions = new Map();
   }
@@ -172,6 +174,7 @@ export class TestSessionManager {
   }
 
   async handleMessage(message) {
+    if (this.isBlacklisted(message.author.id)) return;
     const session = this.sessions.get(
       this.key(message.guild.id, message.author.id)
     );
@@ -250,6 +253,14 @@ export class TestSessionManager {
       await interaction.reply({
         content:
           "Il te faut la permission **Gérer les rôles** pour lancer un test.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (this.isBlacklisted(interaction.user.id)) {
+      await interaction.reply({
+        content: "Tu ne peux pas utiliser les fonctionnalités du bot.",
         ephemeral: true,
       });
       return;

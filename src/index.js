@@ -7,6 +7,7 @@ import {
   GatewayIntentBits,
   PermissionFlagsBits,
 } from "discord.js";
+import { AdminCommands } from "./admin-commands.js";
 import { RankDatabase } from "./database.js";
 import {
   GiveawayManager,
@@ -78,6 +79,19 @@ async function announceRank(member, rank, { isTest = false, role = null } = {}) 
 }
 
 const giveawayManager = new GiveawayManager({ client, database });
+const isGloballyBlacklisted = (userId) =>
+  database.isGloballyBlacklisted(userId);
+const adminCommands = new AdminCommands({
+  client,
+  database,
+  ownerId: process.env.BOT_OWNER_ID,
+  onGlobalBlacklist: async (userId) => {
+    for (const guild of client.guilds.cache.values()) {
+      voiceTracker.pauseUser(guild.id, userId);
+    }
+  },
+});
+giveawayManager.isBlacklisted = isGloballyBlacklisted;
 const testManager = new TestSessionManager({
   client,
   database,
@@ -86,6 +100,7 @@ const testManager = new TestSessionManager({
   ranks: RANKS,
   ensureCurrentCycle,
   announceRank,
+  isBlacklisted: isGloballyBlacklisted,
 });
 
 async function withCycleLock(guildId, operation) {
@@ -178,6 +193,7 @@ function statsWithLiveVoice(guildId, userId) {
 }
 
 async function applyMemberRank(member) {
+  if (isGloballyBlacklisted(member.id)) return;
   if (testManager.has(member.guild.id, member.id)) return;
 
   const settings = database.ensureGuild(member.guild.id);
@@ -255,6 +271,12 @@ async function refreshTrackedMembers(guild) {
       guild.members.cache.get(userId) ??
       (await guild.members.fetch(userId).catch(() => null));
     if (member) await safelySyncMemberRank(member);
+  }
+}
+
+function pauseBlacklistedVoice(guild) {
+  for (const entry of database.getGlobalBlacklist()) {
+    voiceTracker.pauseUser(guild.id, entry.user_id);
   }
 }
 
@@ -341,6 +363,18 @@ function createHelpEmbed() {
         name: "+giveaway <durée> <gagnants> <lot>",
         value:
           "Lance un tirage stylé, par exemple `+giveaway 2h 1 Nitro` (permission Gérer le serveur requise).",
+        inline: false,
+      },
+      {
+        name: "Modération",
+        value:
+          "`+kick`, `+ban`, `+unban`, `+timeout`, `+untimeout`, `+clear`, `+warn`, `+warnings`, `+clearwarnings`.",
+        inline: false,
+      },
+      {
+        name: "Staff & propriétaire",
+        value:
+          "`+staff role/add/remove/list`, `+gbl ban/remove/list`, `+owner stats/guilds`.",
         inline: false,
       }
     )
@@ -532,6 +566,19 @@ async function handlePrefixCommand(message) {
     return;
   }
 
+  try {
+    if (await adminCommands.handle(message, normalizedCommand, args)) return;
+  } catch (error) {
+    console.error(
+      `Admin command ${normalizedCommand} failed in guild ${message.guild.id}.`,
+      error
+    );
+    await message
+      .reply("La commande a échoué. Vérifie les permissions et la hiérarchie des rôles du bot.")
+      .catch(() => undefined);
+    return;
+  }
+
   if (normalizedCommand === "stats" || normalizedCommand === "me") {
     const member =
       message.mentions.members.first() ??
@@ -557,6 +604,7 @@ client.once("ready", async () => {
     try {
       database.ensureGuild(guild.id);
       voiceTracker.startFromGuild(guild);
+      pauseBlacklistedVoice(guild);
       await testManager.restoreInterrupted(guild);
       await ensureCurrentCycle(guild);
       await giveawayManager.restoreForGuild(guild.id);
@@ -583,6 +631,12 @@ client.once("ready", async () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
+  if (
+    isGloballyBlacklisted(message.author.id) &&
+    message.author.id !== process.env.BOT_OWNER_ID
+  ) {
+    return;
+  }
 
   try {
     if (message.content.startsWith(PREFIX)) {
@@ -613,6 +667,10 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
   const guild = newState.guild ?? oldState.guild;
   const member = newState.member ?? oldState.member;
   if (!guild || !member || member.user.bot) return;
+  if (isGloballyBlacklisted(member.id)) {
+    voiceTracker.pauseUser(guild.id, member.id);
+    return;
+  }
 
   try {
     await ensureCurrentCycle(guild);
@@ -783,12 +841,30 @@ client.on("guildCreate", async (guild) => {
   try {
     database.ensureGuild(guild.id);
     voiceTracker.startFromGuild(guild);
+    pauseBlacklistedVoice(guild);
     await testManager.restoreInterrupted(guild);
     await ensureCurrentCycle(guild);
     await giveawayManager.restoreForGuild(guild.id);
     console.info(`Joined guild ${guild.id}.`);
   } catch (error) {
     console.error(`Could not initialize newly joined guild ${guild.id}.`, error);
+  }
+});
+
+client.on("guildMemberAdd", async (member) => {
+  const blacklistEntry = database
+    .getGlobalBlacklist()
+    .find((entry) => entry.user_id === member.id);
+  if (!blacklistEntry) return;
+  try {
+    await member.guild.members.ban(member.id, {
+      reason: `BL globale: ${blacklistEntry.reason}`,
+    });
+  } catch (error) {
+    console.error(
+      `Could not enforce the global blacklist for member ${member.id} in guild ${member.guild.id}.`,
+      error
+    );
   }
 });
 

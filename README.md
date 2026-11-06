@@ -31,6 +31,14 @@ Le comptage commence lorsque le bot rejoint le serveur : Discord ne permet pas d
 - `+logpanel` — ouvre le choix du salon des annonces (permission **Gérer les rôles** requise).
 - `+logpanel off` — désactive les annonces de rang.
 - `+giveaway 2h 1 Nitro` — lance un giveaway de 2 heures avec un gagnant (permission **Gérer le serveur** requise).
+- `+kick @membre [raison]`, `+ban @membre [raison]`, `+unban <ID> [raison]`.
+- `+timeout @membre 10m [raison]`, `+untimeout @membre`.
+- `+clear 50`, `+warn @membre [raison]`, `+warnings @membre`, `+clearwarnings @membre`.
+- `+staff role @rôle`, `+staff add/remove @membre`, `+staff list`.
+- `+gbl ban <ID> confirmer [raison]`, `+gbl remove <ID>`, `+gbl list` (propriétaire du bot uniquement).
+- `+owner stats`, `+owner guilds` (propriétaire du bot uniquement).
+
+Les commandes de modération vérifient les permissions Discord adaptées. La BL est globale : après `+gbl ban <ID> confirmer`, le bot bloque ses fonctionnalités pour cette personne et tente de la bannir dans tous les serveurs où il a **Bannir des membres**. `+gbl remove` retire la personne de la liste, mais ne lève pas les bans déjà posés.
 
 Les rôles sont choisis dans les menus du panneau Discord. Le rôle du bot doit être placé au-dessus des rôles de rang dans les paramètres du serveur.
 
@@ -67,6 +75,7 @@ Le dépôt contient `railway.json` avec les commandes d'installation et de déma
 
 - `DISCORD_BOT_TOKEN` — jeton du bot Discord.
 - `DATA_DIR=/data` — dossier persistant de la base.
+- `BOT_OWNER_ID` — identifiant Discord de la personne autorisée aux commandes `+owner` et `+gbl`.
 
 Ajoute également un volume Railway monté sur `/data`. Sans volume persistant, les compteurs et les rôles choisis pourraient être perdus lors d'un redéploiement ou d'un redémarrage.
 

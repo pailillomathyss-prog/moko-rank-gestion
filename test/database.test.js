@@ -20,8 +20,17 @@ test("guild settings and member stats persist, then reset on the 14-day boundary
 
     database.setRankRole(guildId, 1, "rank-one");
     database.setRankLogChannel(guildId, "rank-logs");
+    database.setStaffRole(guildId, "staff-role");
     database.addMessage(guildId, "member-test");
     database.addVoiceTime(guildId, "member-test", 60_000);
+    const warningId = database.addWarning(
+      guildId,
+      "member-test",
+      "moderator",
+      "Test warning",
+      firstCycleStart
+    );
+    database.addGlobalBlacklist("123456789012345", "Global test", "owner");
     database.saveTestSession({
       guildId,
       userId: "tester",
@@ -52,6 +61,9 @@ test("guild settings and member stats persist, then reset on the 14-day boundary
     });
     assert.equal(database.getGuild(guildId).roleIds[0], "rank-one");
     assert.equal(database.getGuild(guildId).rankLogChannelId, "rank-logs");
+    assert.equal(database.getGuild(guildId).staffRoleId, "staff-role");
+    assert.equal(database.getWarnings(guildId, "member-test")[0].id, warningId);
+    assert.equal(database.isGloballyBlacklisted("123456789012345"), true);
     assert.deepEqual(database.getTestSessions(guildId), [
       {
         guildId,
@@ -81,6 +93,9 @@ test("guild settings and member stats persist, then reset on the 14-day boundary
     assert.equal(database.getGuild(guildId).nextResetAt, resetAt + RESET_INTERVAL_MS);
     assert.equal(database.getGuild(guildId).roleIds[0], "rank-one");
     assert.equal(database.getGuild(guildId).rankLogChannelId, "rank-logs");
+    assert.equal(database.getGuild(guildId).staffRoleId, "staff-role");
+    assert.equal(database.clearWarnings(guildId, "member-test"), 1);
+    assert.equal(database.removeGlobalBlacklist("123456789012345"), true);
     database.deleteTestSession(guildId, "tester");
     assert.deepEqual(database.getTestSessions(guildId), []);
     assert.equal(database.markGiveawayEnding(giveaway.id), true);
