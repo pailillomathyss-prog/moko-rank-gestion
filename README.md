@@ -21,6 +21,7 @@ Utilise un stockage persistant pour `DATA_DIR` chez l’hébergeur afin de conse
 - `#cellule-jail`, visible par les membres jailés et la brigade.
 - `#logs-jail`, réservé à la brigade.
 - Les rôles `Brigade Jail`, `Jail` et `Jail Rang 1` à `Jail Rang 5`.
+- Un embed permanent dans `#cellule-jail` expliquant le motif, le contact de la brigade et la libération. Relancer `/jail setup` met à jour ce message.
 
 Après le setup, donne manuellement le rôle `Brigade Jail` aux agents. Vérifie que le rôle du bot est au-dessus de `Jail` et de tous les rôles de rang. Le setup applique des refus d’accès au rôle Jail dans les salons actuels et dans les salons créés ensuite. Les permissions d’autres rôles peuvent modifier l’accès effectif; vérifie la configuration de ton serveur.
 

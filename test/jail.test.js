@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ChannelType } from "discord.js";
 import { JailDatabase } from "../src/database.js";
-import { applyJailRestriction, buildJailGuide, jailCommand } from "../src/commands.js";
+import {
+  applyJailRestriction,
+  buildJailGuide,
+  buildJailRoomEmbed,
+  jailCommand,
+} from "../src/commands.js";
 import { createMembershipMonitor } from "../src/membership-monitor.js";
 
 test("jail command exposes setup, jail, release, and status", () => {
@@ -23,6 +28,17 @@ test("jail guide explains setup, permissions, rank progression, and limits", () 
   assert.match(text, /sans parcourir les listes de membres existantes/);
   assert.match(text, /\/jail surveillance activer/);
   assert.match(text, /sans parcourir les listes de membres existantes/);
+});
+
+test("jail room embed explains the reason, brigade contact, and release process", () => {
+  const embed = buildJailRoomEmbed();
+  const text = embed.data.fields.map((field) => `${field.name}\n${field.value}`).join("\n");
+
+  assert.equal(embed.data.title, "Guide du jail — à lire");
+  assert.match(text, /motif de ton jail/i);
+  assert.match(text, /contacter un membre de la brigade/i);
+  assert.match(text, /libération est faite par la brigade/i);
+  assert.match(text, /rang de progression suivant/i);
 });
 
 test("membership monitoring requires opt-in and only checks join events", async () => {

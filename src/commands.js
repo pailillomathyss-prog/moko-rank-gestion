@@ -148,6 +148,38 @@ export function buildJailGuide(settings) {
     });
 }
 
+export function buildJailRoomEmbed() {
+  return new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle("Guide du jail — à lire")
+    .setDescription(
+      "Tu es dans l’espace réservé aux membres placés en jail. Les échanges avec la brigade se font dans ce salon.",
+    )
+    .addFields(
+      {
+        name: "Pourquoi suis-je ici ?",
+        value:
+          "La brigade a enregistré le motif de ton jail. Si la mesure est automatique, le bot a détecté ton arrivée dans un serveur surveillé dont l’équipe dirigeante a donné son accord. Si tu penses qu’il s’agit d’une erreur, demande une vérification à la brigade.",
+      },
+      {
+        name: "Que faire maintenant ?",
+        value:
+          "Écris dans ce salon pour demander des explications ou contacter un membre de la brigade. Respecte les consignes du serveur pendant l’examen de ta situation.",
+      },
+      {
+        name: "Comment se passe la libération ?",
+        value:
+          "La libération est faite par la brigade après vérification; elle n’est pas automatique. À la libération, le bot retire le rôle Jail et attribue le rang de progression suivant, jusqu’au rang maximal configuré.",
+      },
+      {
+        name: "À savoir",
+        value:
+          "Le rôle Jail limite l’accès aux autres salons du serveur. Le motif et les actions de la brigade sont conservés dans les logs du serveur.",
+      },
+    )
+    .setFooter({ text: "Pour toute question, contacte la brigade dans ce salon." });
+}
+
 function hasPermission(member, permission) {
   return Boolean(member?.permissions.has(permission));
 }
@@ -424,6 +456,17 @@ export async function setupJail(guild, database) {
     if (channel.id !== jailChannel.id && channel.id !== logChannel.id) {
       await applyJailRestriction(channel, jailRole.id);
     }
+  }
+  const existingGuide = (await jailChannel.messages.fetch({ limit: 50 })).find(
+    (message) =>
+      message.author.id === guild.client.user.id &&
+      message.embeds.some((embed) => embed.title === "Guide du jail — à lire"),
+  );
+  const guidePayload = { embeds: [buildJailRoomEmbed()] };
+  if (existingGuide) {
+    await existingGuide.edit(guidePayload);
+  } else {
+    await jailChannel.send(guidePayload);
   }
   await logChannel.send({
     embeds: [
