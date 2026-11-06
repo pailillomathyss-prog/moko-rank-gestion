@@ -38,6 +38,7 @@ export class RankDatabase {
         brigade_role_id TEXT,
         jail_role_id TEXT,
         jail_channel_id TEXT,
+        quit_reward_role_id TEXT,
         anti_raid_enabled INTEGER NOT NULL DEFAULT 0,
         raid_threshold INTEGER NOT NULL DEFAULT 5,
         raid_window_seconds INTEGER NOT NULL DEFAULT 10
@@ -123,6 +124,17 @@ export class RankDatabase {
         PRIMARY KEY (guild_id, user_id)
       );
 
+      CREATE TABLE IF NOT EXISTS jail_exit_requests (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        requested_at INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reviewed_at INTEGER,
+        reviewed_by TEXT,
+        review_reason TEXT,
+        PRIMARY KEY (guild_id, user_id)
+      );
+
       CREATE INDEX IF NOT EXISTS member_warnings_guild_user
         ON member_warnings (guild_id, user_id, created_at DESC);
     `);
@@ -143,6 +155,7 @@ export class RankDatabase {
       ["brigade_role_id", "TEXT"],
       ["jail_role_id", "TEXT"],
       ["jail_channel_id", "TEXT"],
+      ["quit_reward_role_id", "TEXT"],
       ["anti_raid_enabled", "INTEGER NOT NULL DEFAULT 0"],
       ["raid_threshold", "INTEGER NOT NULL DEFAULT 5"],
       ["raid_window_seconds", "INTEGER NOT NULL DEFAULT 10"],
@@ -283,6 +296,32 @@ export class RankDatabase {
     this.getJailedStatement = this.db.prepare(
       "SELECT * FROM jailed_members WHERE guild_id = ? AND user_id = ?"
     );
+    this.setQuitRewardRoleStatement = this.db.prepare(
+      "UPDATE guild_config SET quit_reward_role_id = ? WHERE guild_id = ?"
+    );
+    this.createJailExitRequestStatement = this.db.prepare(`
+      INSERT INTO jail_exit_requests (guild_id, user_id, requested_at, status)
+      VALUES (?, ?, ?, 'pending')
+      ON CONFLICT (guild_id, user_id) DO UPDATE SET
+        requested_at = excluded.requested_at,
+        status = 'pending',
+        reviewed_at = NULL,
+        reviewed_by = NULL,
+        review_reason = NULL
+    `);
+    this.getJailExitRequestStatement = this.db.prepare(
+      "SELECT * FROM jail_exit_requests WHERE guild_id = ? AND user_id = ?"
+    );
+    this.getPendingJailExitRequestsStatement = this.db.prepare(`
+      SELECT * FROM jail_exit_requests
+      WHERE guild_id = ? AND status = 'pending'
+      ORDER BY requested_at ASC
+    `);
+    this.resolveJailExitRequestStatement = this.db.prepare(`
+      UPDATE jail_exit_requests
+      SET status = ?, reviewed_at = ?, reviewed_by = ?, review_reason = ?
+      WHERE guild_id = ? AND user_id = ? AND status = 'pending'
+    `);
     this.insertGiveawayStatement = this.db.prepare(`
       INSERT INTO giveaways (
         id, guild_id, channel_id, host_id, prize, winner_count,
@@ -390,6 +429,7 @@ export class RankDatabase {
       brigadeRoleId: row.brigade_role_id ?? null,
       jailRoleId: row.jail_role_id ?? null,
       jailChannelId: row.jail_channel_id ?? null,
+      quitRewardRoleId: row.quit_reward_role_id ?? null,
       antiRaidEnabled: Boolean(row.anti_raid_enabled),
       raidThreshold: row.raid_threshold,
       raidWindowSeconds: row.raid_window_seconds,
@@ -419,6 +459,33 @@ export class RankDatabase {
 
   setJailConfig(guildId, roleId, channelId) {
     this.setJailConfigStatement.run(roleId, channelId, guildId);
+  }
+
+  setQuitRewardRole(guildId, roleId) {
+    this.setQuitRewardRoleStatement.run(roleId, guildId);
+  }
+
+  requestJailExit(guildId, userId, now = Date.now()) {
+    this.createJailExitRequestStatement.run(guildId, userId, now);
+  }
+
+  getJailExitRequest(guildId, userId) {
+    return this.getJailExitRequestStatement.get(guildId, userId) ?? null;
+  }
+
+  getPendingJailExitRequests(guildId) {
+    return this.getPendingJailExitRequestsStatement.all(guildId);
+  }
+
+  resolveJailExitRequest(guildId, userId, status, reviewedBy, reason = null) {
+    return this.resolveJailExitRequestStatement.run(
+      status,
+      Date.now(),
+      reviewedBy,
+      reason,
+      guildId,
+      userId
+    ).changes > 0;
   }
 
   setRaidSettings(guildId, enabled, threshold, windowSeconds) {

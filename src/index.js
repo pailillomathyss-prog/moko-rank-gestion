@@ -385,7 +385,7 @@ function createHelpEmbed() {
       {
         name: "Brigade de sécurité",
         value:
-          "`+brigade role/jailrole/seuil/raid`, `+enemy add/remove/list`, `+jail`, `+unjail`, `+security`.",
+          "`+brigade role/jailrole/quitterole/seuil/raid`, `+enemy add/remove/list`, `+jail`, `+unjail`, `+quitterlist`, `+quittervalider`, `+quitterrefuser`.",
         inline: false,
       }
     )

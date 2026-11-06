@@ -22,7 +22,7 @@ export class SecurityManager {
 
   canUseBrigade(member, settings) {
     return Boolean(
-      member?.permissions.has(PermissionFlagsBits.ManageGuild) ||
+      member?.permissions?.has(PermissionFlagsBits.ManageGuild) ||
         (settings.brigadeRoleId &&
           member?.roles.cache.has(settings.brigadeRoleId))
     );
@@ -66,6 +66,10 @@ export class SecurityManager {
       ? member.guild.roles.cache.get(settings.jailRoleId)
       : null;
     if (!role || !settings.jailChannelId) return false;
+    const alreadyJailed = this.database.getJailedMember(
+      member.guild.id,
+      member.id
+    );
     if (!member.roles.cache.has(role.id)) {
       await member.roles.add(role, `Jail: ${reason}`);
     }
@@ -75,6 +79,18 @@ export class SecurityManager {
       reason.slice(0, 400),
       actorId
     );
+    if (!alreadyJailed) {
+      const room = member.guild.channels.cache.get(settings.jailChannelId);
+      await member
+        .send(
+          `Tu as été placé en jail sur **${member.guild.name}**. Si tu as quitté les serveurs ennemis, envoie \`+quitter\` dans ${room ?? "le salon jail"} pour demander le rôle de sortie. La brigade vérifiera ta demande avant de te libérer.`
+        )
+        .catch(() => undefined);
+      await room?.send({
+          content: `🔒 <@${member.id}> a été placé en jail. Si tu as quitté les serveurs ennemis, utilise \`+quitter\` pour demander une vérification par la brigade.`,
+          allowedMentions: { users: [member.id] },
+        }).catch(() => undefined);
+    }
     return true;
   }
 
@@ -153,13 +169,25 @@ export class SecurityManager {
   }
 
   async handleCommand(message, command, args) {
-    if (!["brigade", "jail", "unjail", "enemy", "security"].includes(command)) {
+    if (
+      ![
+        "brigade",
+        "jail",
+        "unjail",
+        "enemy",
+        "security",
+        "quitter",
+        "quittervalider",
+        "quitterrefuser",
+        "quitterlist",
+      ].includes(command)
+    ) {
       return false;
     }
     const guild = message.guild;
     const settings = this.database.ensureGuild(guild.id);
     const action = args[0]?.toLowerCase();
-    const manageGuild = message.member?.permissions.has(
+    const manageGuild = message.member?.permissions?.has(
       PermissionFlagsBits.ManageGuild
     );
 
@@ -186,7 +214,14 @@ export class SecurityManager {
       if (action === "jailrole") {
         const role = message.mentions.roles.first();
         const channel = message.mentions.channels.first();
-        if (!role || !channel || !channel.isTextBased?.()) {
+        if (
+          !role ||
+          role.id === guild.id ||
+          role.managed ||
+          role.permissions.has(PermissionFlagsBits.Administrator) ||
+          !channel?.isTextBased?.() ||
+          !channel.permissionOverwrites?.edit
+        ) {
           await message.reply("Utilise `+brigade jailrole @rôle #salon-jail`.");
           return true;
         }
@@ -197,6 +232,22 @@ export class SecurityManager {
         } catch (error) {
           await message.reply(`Configuration impossible : ${error.message}`);
         }
+        return true;
+      }
+      if (action === "quitterole") {
+        const role = message.mentions.roles.first();
+        if (
+          !role ||
+          role.id === guild.id ||
+          role.managed ||
+          role.permissions.has(PermissionFlagsBits.Administrator) ||
+          role.position >= guild.members.me.roles.highest.position
+        ) {
+          await message.reply("Utilise `+brigade quitterole @rôle` avec un rôle attribuable et sans Administrateur.");
+          return true;
+        }
+        this.database.setQuitRewardRole(guild.id, role.id);
+        await message.reply(`✅ Le rôle attribué après validation sera ${role}.`);
         return true;
       }
       if (action === "raid") {
@@ -241,7 +292,44 @@ export class SecurityManager {
         await message.reply(`✅ Seuil anti-raid : ${threshold} arrivées en ${windowSeconds} secondes.`);
         return true;
       }
-      await message.reply("Commandes : `+brigade role`, `+brigade jailrole`, `+brigade raid on/off`, `+brigade seuil`.");
+      await message.reply("Commandes : `+brigade role`, `+brigade jailrole`, `+brigade quitterole`, `+brigade raid on/off`, `+brigade seuil`.");
+      return true;
+    }
+
+    if (command === "quitter") {
+      const member = message.member;
+      if (
+        !member ||
+        (!this.database.getJailedMember(guild.id, member.id) &&
+          !(settings.jailRoleId &&
+            member.roles.cache.has(settings.jailRoleId)))
+      ) {
+        await message.reply("Cette commande est réservée aux membres actuellement jailés.");
+        return true;
+      }
+      if (!settings.quitRewardRoleId) {
+        await message.reply("La brigade n’a pas encore configuré le rôle de sortie.");
+        return true;
+      }
+      if (
+        this.database.getJailExitRequest(guild.id, member.id)?.status ===
+        "pending"
+      ) {
+        await message.reply("Ta demande est déjà en attente de vérification par la brigade.");
+        return true;
+      }
+      this.database.requestJailExit(guild.id, member.id);
+      await message.reply("✅ Demande envoyée. La brigade vérifiera ta situation avant de t’attribuer le rôle et de te libérer.");
+      const room = settings.jailChannelId
+        ? guild.channels.cache.get(settings.jailChannelId)
+        : null;
+        await room?.send({
+        content: `📩 <@${member.id}> a demandé la vérification de sortie de jail. Brigade : utilisez \`+quitterlist\`.`,
+        allowedMentions: {
+          users: [member.id],
+          roles: settings.brigadeRoleId ? [settings.brigadeRoleId] : [],
+        },
+      }).catch(() => undefined);
       return true;
     }
 
@@ -254,6 +342,66 @@ export class SecurityManager {
       await message.reply(
         `**Sécurité**\n• Anti-raid : ${settings.antiRaidEnabled ? "activé" : "désactivé"}\n• Seuil : ${settings.raidThreshold} arrivées / ${settings.raidWindowSeconds}s\n• Rôle brigade : ${settings.brigadeRoleId ? `<@&${settings.brigadeRoleId}>` : "non configuré"}\n• Salon jail : ${settings.jailChannelId ? `<#${settings.jailChannelId}>` : "non configuré"}`
       );
+      return true;
+    }
+
+    if (command === "quitterlist") {
+      const requests = this.database.getPendingJailExitRequests(guild.id);
+      await message.reply(
+        requests.length
+          ? `**Demandes de sortie (${requests.length})**\n${requests.map((request) => `• <@${request.user_id}> — <t:${Math.floor(request.requested_at / 1000)}:R>`).join("\n")}\nValide avec \`+quittervalider @membre\` ou refuse avec \`+quitterrefuser @membre [raison]\`.`
+          : "Aucune demande de sortie en attente."
+      );
+      return true;
+    }
+
+    if (command === "quittervalider" || command === "quitterrefuser") {
+      const member = message.mentions.members.first();
+      if (!member) {
+        await message.reply(`Utilise \`+${command} @membre\`.`);
+        return true;
+      }
+      const request = this.database.getJailExitRequest(guild.id, member.id);
+      if (!request || request.status !== "pending") {
+        await message.reply("Aucune demande de sortie en attente pour ce membre.");
+        return true;
+      }
+      if (command === "quitterrefuser") {
+        const reason = args.slice(1).join(" ").slice(0, 300) || "La brigade n’a pas validé la demande.";
+        this.database.resolveJailExitRequest(
+          guild.id,
+          member.id,
+          "rejected",
+          message.author.id,
+          reason
+        );
+        await member
+          .send(`Ta demande de sortie de jail a été refusée. Motif : ${reason}`)
+          .catch(() => undefined);
+        await message.reply(`Demande refusée pour ${member}.`);
+        return true;
+      }
+
+      const rewardRole = settings.quitRewardRoleId
+        ? guild.roles.cache.get(settings.quitRewardRoleId)
+        : null;
+      if (!rewardRole || rewardRole.position >= guild.members.me.roles.highest.position) {
+        await message.reply("Configure un rôle de sortie attribuable avec `+brigade quitterole @rôle`.");
+        return true;
+      }
+      await member.roles.add(rewardRole, "Demande de sortie de jail validée par la brigade.");
+      this.database.removeEnemyMember(guild.id, member.id);
+      await this.releaseMember(member);
+      this.database.resolveJailExitRequest(
+        guild.id,
+        member.id,
+        "approved",
+        message.author.id
+      );
+      await member
+        .send(`Ta demande a été validée : tu as reçu le rôle **${rewardRole.name}** et tu as été libéré du jail.`)
+        .catch(() => undefined);
+      await message.reply(`✅ Demande validée : ${member} a reçu ${rewardRole} et a été libéré.`);
       return true;
     }
 
