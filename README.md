@@ -28,10 +28,15 @@ Le comptage commence lorsque le bot rejoint le serveur : Discord ne permet pas d
 - `+panel` — affiche les cinq menus pour choisir les rôles (permission **Gérer les rôles** requise).
 - `+panel retirer 3` — retire l'association du palier indiqué.
 - `+testpanel` ou `+test` — ouvre un panneau de test temporaire (permission **Gérer les rôles** requise).
+- `+logpanel` — ouvre le choix du salon des annonces (permission **Gérer les rôles** requise).
+- `+logpanel off` — désactive les annonces de rang.
+- `+giveaway 2h 1 Nitro` — lance un giveaway de 2 heures avec un gagnant (permission **Gérer le serveur** requise).
 
 Les rôles sont choisis dans les menus du panneau Discord. Le rôle du bot doit être placé au-dessus des rôles de rang dans les paramètres du serveur.
 
 Dans le panneau de test, chaque message normal envoyé par la personne qui lance le test attribue le rôle du palier suivant, jusqu'au palier 5. Le test ignore le vocal et ne modifie pas les compteurs réels. Le bouton de fin restaure les rôles présents avant le test ; la restauration se fait aussi après 10 minutes d'inactivité ou si le bot redémarre.
+
+Les annonces de rang affichent l'avatar du membre et sont envoyées dans le salon choisi avec `+logpanel`. Elles sont émises lors d'une attribution réelle et à chaque palier du panneau de test. Le giveaway affiche un compte à rebours, permet de participer ou de quitter avec un bouton, puis tire automatiquement des gagnants distincts à la fin. Les durées acceptées vont de 10 secondes à 30 jours ; le nombre de gagnants va de 1 à 20.
 
 ## Configuration Discord
 
@@ -40,6 +45,7 @@ Dans le panneau de test, chaque message normal envoyé par la personne qui lance
 3. Invite le bot dans le serveur avec les permissions **View Channels**, **Send Messages**, **Embed Links** et **Manage Roles**. Le bot doit aussi pouvoir voir les salons où les messages sont comptés.
 4. Place le rôle du bot au-dessus des cinq rôles que tu veux attribuer.
 5. Dans un salon du serveur, utilise `+panel`, puis sélectionne un rôle pour chaque palier.
+6. Utilise `+logpanel` pour choisir le salon des annonces de rang.
 
 Ne publie jamais le jeton Discord dans le dépôt ou dans un message. Pour un test local, copie `.env.example` vers `.env` et renseigne le jeton dans `.env`.
 

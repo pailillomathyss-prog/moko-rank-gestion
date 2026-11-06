@@ -8,7 +8,13 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { RankDatabase } from "./database.js";
+import {
+  GiveawayManager,
+  parseGiveawayArguments,
+} from "./giveaway-manager.js";
+import { createLogPanel } from "./log-panel.js";
 import { createRolePanel } from "./panel.js";
+import { createRankAnnouncement } from "./rank-announcements.js";
 import { createTestPanel } from "./test-panel.js";
 import { TestSessionManager } from "./test-session-manager.js";
 import {
@@ -44,6 +50,34 @@ const client = new Client({
 
 const cycleLocks = new Map();
 const memberRoleLocks = new Map();
+
+async function announceRank(member, rank, { isTest = false, role = null } = {}) {
+  try {
+    const settings = database.ensureGuild(member.guild.id);
+    if (!settings.rankLogChannelId) return;
+
+    const channel =
+      member.guild.channels.cache.get(settings.rankLogChannelId) ??
+      (await member.guild.channels
+        .fetch(settings.rankLogChannelId)
+        .catch(() => null));
+    if (!channel?.isTextBased?.() || typeof channel.send !== "function") {
+      console.warn(
+        `Rank announcement channel ${settings.rankLogChannelId} is unavailable in guild ${member.guild.id}.`
+      );
+      return;
+    }
+
+    await channel.send(createRankAnnouncement(member, rank, role, { isTest }));
+  } catch (error) {
+    console.error(
+      `Could not announce rank ${rank.level} for member ${member.id}.`,
+      error
+    );
+  }
+}
+
+const giveawayManager = new GiveawayManager({ client, database });
 const testManager = new TestSessionManager({
   client,
   database,
@@ -51,6 +85,7 @@ const testManager = new TestSessionManager({
   memberRoleLocks,
   ranks: RANKS,
   ensureCurrentCycle,
+  announceRank,
 });
 
 async function withCycleLock(guildId, operation) {
@@ -172,6 +207,7 @@ async function applyMemberRank(member) {
       targetRole,
       `Quota du palier ${rank.level} atteint.`
     );
+    await announceRank(member, rank, { role: targetRole });
   }
 
   const rolesToRemove = managedRoleIds.filter(
@@ -294,6 +330,18 @@ function createHelpEmbed() {
         value:
           "Ouvre un test temporaire : un message normal fait passer au palier suivant, sans changer les vrais compteurs. Alias : +test.",
         inline: false,
+      },
+      {
+        name: "+logpanel [off]",
+        value:
+          "Choisis le salon des annonces de rang, ou désactive les annonces.",
+        inline: false,
+      },
+      {
+        name: "+giveaway <durée> <gagnants> <lot>",
+        value:
+          "Lance un tirage stylé, par exemple `+giveaway 2h 1 Nitro` (permission Gérer le serveur requise).",
+        inline: false,
       }
     )
     .setFooter({
@@ -361,6 +409,94 @@ async function handleTestPanelCommand(message) {
   });
 }
 
+async function handleLogPanelCommand(message, args) {
+  if (!message.member || !canManageRoles(message.member)) {
+    await message.reply("Il te faut la permission **Gérer les rôles**.");
+    return;
+  }
+
+  let settings = await ensureCurrentCycle(message.guild);
+  if (["off", "retirer", "désactiver"].includes(args[0]?.toLowerCase())) {
+    database.setRankLogChannel(message.guild.id, null);
+    settings = database.ensureGuild(message.guild.id);
+  }
+
+  await message.reply(createLogPanel(message.guild, settings));
+}
+
+async function handleGiveawayCommand(message, args) {
+  if (
+    !message.member?.permissions.has(PermissionFlagsBits.ManageGuild)
+  ) {
+    await message.reply("Il te faut la permission **Gérer le serveur**.");
+    return;
+  }
+
+  let giveawayOptions;
+  try {
+    giveawayOptions = parseGiveawayArguments(args);
+  } catch (error) {
+    await message.reply(
+      `${error.message}\nUtilise : \`+giveaway <durée> <gagnants> <lot>\` — exemple : \`+giveaway 2h 1 Nitro\`.`
+    );
+    return;
+  }
+
+  if (
+    !message.channel.isTextBased() ||
+    typeof message.channel.send !== "function"
+  ) {
+    await message.reply("Je ne peux pas publier un giveaway dans ce salon.");
+    return;
+  }
+
+  try {
+    const giveaway = await giveawayManager.start({
+      guild: message.guild,
+      channel: message.channel,
+      hostId: message.author.id,
+      ...giveawayOptions,
+    });
+    await message.reply(
+      `Giveaway lancé pour **${giveaway.prize}**. Fin prévue <t:${Math.floor(giveaway.endsAt / 1_000)}:R>.`
+    );
+  } catch (error) {
+    console.error(`Could not create a giveaway in guild ${message.guild.id}.`, error);
+    await message.reply(
+      "Je n’ai pas pu créer le giveaway. Vérifie que le bot peut envoyer des messages et intégrer des liens dans ce salon."
+    );
+  }
+}
+
+async function handleLogChannelSelect(interaction) {
+  if (!interaction.guild) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles)) {
+    await interaction.reply({
+      content: "Il te faut la permission **Gérer les rôles**.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const channel = interaction.guild.channels.cache.get(interaction.values[0]);
+  if (!channel?.isTextBased?.() || typeof channel.send !== "function") {
+    await interaction.reply({
+      content: "Choisis un salon textuel de ce serveur.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  database.ensureGuild(interaction.guild.id);
+  database.setRankLogChannel(interaction.guild.id, channel.id);
+  const settings = database.ensureGuild(interaction.guild.id);
+  await interaction.update(createLogPanel(interaction.guild, settings));
+  await interaction.followUp({
+    content: `Les annonces de rang seront publiées dans <#${channel.id}>.`,
+    ephemeral: true,
+  });
+}
+
 async function handlePrefixCommand(message) {
   const body = message.content.slice(PREFIX.length).trim();
   const [command = "", ...args] = body.split(/\s+/);
@@ -383,6 +519,16 @@ async function handlePrefixCommand(message) {
 
   if (normalizedCommand === "testpanel" || normalizedCommand === "test") {
     await handleTestPanelCommand(message);
+    return;
+  }
+
+  if (normalizedCommand === "logpanel") {
+    await handleLogPanelCommand(message, args);
+    return;
+  }
+
+  if (normalizedCommand === "giveaway") {
+    await handleGiveawayCommand(message, args);
     return;
   }
 
@@ -413,6 +559,7 @@ client.once("ready", async () => {
       voiceTracker.startFromGuild(guild);
       await testManager.restoreInterrupted(guild);
       await ensureCurrentCycle(guild);
+      await giveawayManager.restoreForGuild(guild.id);
     } catch (error) {
       console.error(`Could not initialize guild ${guild.id}.`, error);
     }
@@ -482,6 +629,23 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isButton()) {
+    if (interaction.customId.startsWith("moko:giveaway:enter:")) {
+      try {
+        await giveawayManager.handleButton(interaction);
+      } catch (error) {
+        console.error("Could not process a giveaway entry.", error);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction
+            .reply({
+              content: "Je n’ai pas pu enregistrer ta participation.",
+              ephemeral: true,
+            })
+            .catch(() => undefined);
+        }
+      }
+      return;
+    }
+
     if (
       interaction.customId === "moko:test:start" ||
       interaction.customId === "moko:test:stop"
@@ -498,6 +662,26 @@ client.on("interactionCreate", async (interaction) => {
             })
             .catch(() => undefined);
         }
+      }
+    }
+    return;
+  }
+
+  if (
+    interaction.isChannelSelectMenu() &&
+    interaction.customId === "moko:logs:channel"
+  ) {
+    try {
+      await handleLogChannelSelect(interaction);
+    } catch (error) {
+      console.error("Could not update the rank announcement channel.", error);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction
+          .reply({
+            content: "Je n’ai pas pu enregistrer ce salon.",
+            ephemeral: true,
+          })
+          .catch(() => undefined);
       }
     }
     return;
@@ -601,6 +785,7 @@ client.on("guildCreate", async (guild) => {
     voiceTracker.startFromGuild(guild);
     await testManager.restoreInterrupted(guild);
     await ensureCurrentCycle(guild);
+    await giveawayManager.restoreForGuild(guild.id);
     console.info(`Joined guild ${guild.id}.`);
   } catch (error) {
     console.error(`Could not initialize newly joined guild ${guild.id}.`, error);

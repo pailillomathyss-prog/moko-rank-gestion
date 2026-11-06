@@ -9,6 +9,7 @@ export class TestSessionManager {
     memberRoleLocks,
     ranks,
     ensureCurrentCycle,
+    announceRank,
     idleTimeoutMs = 10 * 60 * 1000,
   }) {
     this.client = client;
@@ -17,6 +18,7 @@ export class TestSessionManager {
     this.memberRoleLocks = memberRoleLocks;
     this.ranks = ranks;
     this.ensureCurrentCycle = ensureCurrentCycle;
+    this.announceRank = announceRank;
     this.idleTimeoutMs = idleTimeoutMs;
     this.sessions = new Map();
   }
@@ -166,6 +168,7 @@ export class TestSessionManager {
         "Passage au palier suivant pendant le test."
       );
     }
+    return targetRole;
   }
 
   async handleMessage(message) {
@@ -183,7 +186,7 @@ export class TestSessionManager {
         const member = message.member ?? session.member;
         if (!member) return;
 
-        await this.assignRank(member, session, nextLevel);
+        const role = await this.assignRank(member, session, nextLevel);
         session.member = member;
         session.currentLevel = nextLevel;
         this.database.updateTestSessionLevel(
@@ -191,6 +194,10 @@ export class TestSessionManager {
           session.userId,
           nextLevel
         );
+        await this.announceRank?.(member, this.ranks[nextLevel - 1], {
+          isTest: true,
+          role,
+        });
         this.armTimeout(session);
 
         const status =

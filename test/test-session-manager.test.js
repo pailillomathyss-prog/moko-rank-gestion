@@ -59,6 +59,7 @@ test("test-panel messages grant ranks in order and restore the original rank", a
   };
   const pausedUsers = [];
   const resumedUsers = [];
+  const rankAnnouncements = [];
   const voiceTracker = {
     pauseUser: (...args) => pausedUsers.push(args),
     resumeUser: (...args) => resumedUsers.push(args),
@@ -74,6 +75,7 @@ test("test-panel messages grant ranks in order and restore the original rank", a
     memberRoleLocks: new Map(),
     ranks: RANKS,
     ensureCurrentCycle: async () => ({ roleIds }),
+    announceRank: async (...args) => rankAnnouncements.push(args),
   });
   const interactionReplies = [];
   await manager.handleButton({
@@ -102,6 +104,13 @@ test("test-panel messages grant ranks in order and restore the original rank", a
   }
 
   assert.deepEqual(updatedLevels, [1, 2, 3, 4, 5]);
+  assert.deepEqual(
+    rankAnnouncements.map(([, rank, options]) => [
+      rank.level,
+      options.isTest,
+    ]),
+    [[1, true], [2, true], [3, true], [4, true], [5, true]]
+  );
   assert.equal(messageReplies.length, 5);
 
   await manager.handleButton({

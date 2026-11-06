@@ -1,6 +1,23 @@
 import Database from "better-sqlite3";
 import { RESET_INTERVAL_MS, RANKS } from "./ranks.js";
 
+function mapGiveaway(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    guildId: row.guild_id,
+    channelId: row.channel_id,
+    messageId: row.message_id,
+    hostId: row.host_id,
+    prize: row.prize,
+    winnerCount: row.winner_count,
+    endsAt: row.ends_at,
+    status: row.status,
+    winnerIds: JSON.parse(row.winner_ids_json),
+    resultAnnounced: Boolean(row.result_announced),
+  };
+}
+
 export class RankDatabase {
   constructor(filePath) {
     this.db = new Database(filePath);
@@ -15,7 +32,8 @@ export class RankDatabase {
         role_2 TEXT,
         role_3 TEXT,
         role_4 TEXT,
-        role_5 TEXT
+        role_5 TEXT,
+        rank_log_channel_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS member_stats (
@@ -38,7 +56,42 @@ export class RankDatabase {
         current_level INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (guild_id, user_id)
       );
+
+      CREATE TABLE IF NOT EXISTS giveaways (
+        id TEXT PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        message_id TEXT,
+        host_id TEXT NOT NULL,
+        prize TEXT NOT NULL,
+        winner_count INTEGER NOT NULL,
+        ends_at INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        winner_ids_json TEXT NOT NULL DEFAULT '[]',
+        result_announced INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS giveaways_guild_status_end
+        ON giveaways (guild_id, status, ends_at);
+
+      CREATE TABLE IF NOT EXISTS giveaway_entries (
+        giveaway_id TEXT NOT NULL REFERENCES giveaways(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        joined_at INTEGER NOT NULL,
+        PRIMARY KEY (giveaway_id, user_id)
+      );
     `);
+
+    const guildConfigColumns = this.db
+      .prepare("PRAGMA table_info(guild_config)")
+      .all()
+      .map((column) => column.name);
+    if (!guildConfigColumns.includes("rank_log_channel_id")) {
+      this.db.exec(
+        "ALTER TABLE guild_config ADD COLUMN rank_log_channel_id TEXT"
+      );
+    }
 
     this.insertGuild = this.db.prepare(`
       INSERT OR IGNORE INTO guild_config (guild_id, cycle_started_at, next_reset_at)
@@ -91,6 +144,98 @@ export class RankDatabase {
       DELETE FROM test_sessions
       WHERE guild_id = ? AND user_id = ?
     `);
+    this.setRankLogChannelStatement = this.db.prepare(`
+      UPDATE guild_config
+      SET rank_log_channel_id = ?
+      WHERE guild_id = ?
+    `);
+    this.insertGiveawayStatement = this.db.prepare(`
+      INSERT INTO giveaways (
+        id, guild_id, channel_id, host_id, prize, winner_count,
+        ends_at, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.selectGiveawayStatement = this.db.prepare(
+      "SELECT * FROM giveaways WHERE id = ?"
+    );
+    this.selectPendingGiveawaysStatement = this.db.prepare(`
+      SELECT * FROM giveaways
+      WHERE guild_id = ? AND status IN ('active', 'ending')
+      ORDER BY ends_at ASC
+    `);
+    this.selectUnannouncedGiveawaysStatement = this.db.prepare(`
+      SELECT * FROM giveaways
+      WHERE guild_id = ? AND status = 'ended' AND result_announced = 0
+    `);
+    this.setGiveawayMessageStatement = this.db.prepare(`
+      UPDATE giveaways SET message_id = ? WHERE id = ?
+    `);
+    this.markGiveawayEndingStatement = this.db.prepare(`
+      UPDATE giveaways SET status = 'ending'
+      WHERE id = ? AND status = 'active'
+    `);
+    this.completeGiveawayStatement = this.db.prepare(`
+      UPDATE giveaways
+      SET status = 'ended', winner_ids_json = ?
+      WHERE id = ? AND status = 'ending'
+    `);
+    this.markGiveawayResultAnnouncedStatement = this.db.prepare(`
+      UPDATE giveaways SET result_announced = 1 WHERE id = ?
+    `);
+    this.deleteGiveawayStatement = this.db.prepare(
+      "DELETE FROM giveaways WHERE id = ?"
+    );
+    this.insertGiveawayEntryStatement = this.db.prepare(`
+      INSERT INTO giveaway_entries (giveaway_id, user_id, joined_at)
+      VALUES (?, ?, ?)
+    `);
+    this.deleteGiveawayEntryStatement = this.db.prepare(`
+      DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?
+    `);
+    this.selectGiveawayEntryStatement = this.db.prepare(`
+      SELECT user_id FROM giveaway_entries
+      WHERE giveaway_id = ? AND user_id = ?
+    `);
+    this.selectGiveawayEntriesStatement = this.db.prepare(`
+      SELECT user_id FROM giveaway_entries
+      WHERE giveaway_id = ? ORDER BY joined_at ASC
+    `);
+    this.countGiveawayEntriesStatement = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM giveaway_entries WHERE giveaway_id = ?
+    `);
+    this.toggleGiveawayEntryTransaction = this.db.transaction(
+      (giveawayId, userId) => {
+        const giveaway = this.selectGiveawayStatement.get(giveawayId);
+        if (
+          !giveaway ||
+          giveaway.status !== "active" ||
+          giveaway.ends_at <= Date.now()
+        ) {
+          return { open: false, entered: false, count: 0 };
+        }
+
+        const exists = this.selectGiveawayEntryStatement.get(
+          giveawayId,
+          userId
+        );
+        if (exists) {
+          this.deleteGiveawayEntryStatement.run(giveawayId, userId);
+        } else {
+          this.insertGiveawayEntryStatement.run(
+            giveawayId,
+            userId,
+            Date.now()
+          );
+        }
+
+        return {
+          open: true,
+          entered: !exists,
+          count: this.countGiveawayEntriesStatement.get(giveawayId).count,
+        };
+      }
+    );
   }
 
   ensureGuild(guildId, now = Date.now()) {
@@ -106,6 +251,7 @@ export class RankDatabase {
       cycleStartedAt: row.cycle_started_at,
       nextResetAt: row.next_reset_at,
       roleIds: RANKS.map((rank) => row[`role_${rank.level}`] ?? null),
+      rankLogChannelId: row.rank_log_channel_id ?? null,
     };
   }
 
@@ -116,6 +262,10 @@ export class RankDatabase {
     this.db
       .prepare(`UPDATE guild_config SET role_${level} = ? WHERE guild_id = ?`)
       .run(roleId, guildId);
+  }
+
+  setRankLogChannel(guildId, channelId) {
+    this.setRankLogChannelStatement.run(channelId, guildId);
   }
 
   getStats(guildId, userId) {
@@ -167,6 +317,70 @@ export class RankDatabase {
 
   deleteTestSession(guildId, userId) {
     this.deleteTestSessionStatement.run(guildId, userId);
+  }
+
+  createGiveaway(giveaway, now = Date.now()) {
+    this.insertGiveawayStatement.run(
+      giveaway.id,
+      giveaway.guildId,
+      giveaway.channelId,
+      giveaway.hostId,
+      giveaway.prize,
+      giveaway.winnerCount,
+      giveaway.endsAt,
+      now
+    );
+  }
+
+  setGiveawayMessageId(giveawayId, messageId) {
+    this.setGiveawayMessageStatement.run(messageId, giveawayId);
+  }
+
+  getGiveaway(giveawayId) {
+    return mapGiveaway(this.selectGiveawayStatement.get(giveawayId));
+  }
+
+  getPendingGiveaways(guildId) {
+    return this.selectPendingGiveawaysStatement
+      .all(guildId)
+      .map(mapGiveaway);
+  }
+
+  getUnannouncedGiveaways(guildId) {
+    return this.selectUnannouncedGiveawaysStatement
+      .all(guildId)
+      .map(mapGiveaway);
+  }
+
+  toggleGiveawayEntry(giveawayId, userId) {
+    return this.toggleGiveawayEntryTransaction(giveawayId, userId);
+  }
+
+  getGiveawayEntries(giveawayId) {
+    return this.selectGiveawayEntriesStatement
+      .all(giveawayId)
+      .map((row) => row.user_id);
+  }
+
+  markGiveawayEnding(giveawayId) {
+    return this.markGiveawayEndingStatement.run(giveawayId).changes > 0;
+  }
+
+  completeGiveaway(giveawayId, winnerIds) {
+    return (
+      this.completeGiveawayStatement.run(
+        JSON.stringify(winnerIds),
+        giveawayId
+      ).changes > 0
+    );
+  }
+
+  markGiveawayResultAnnounced(giveawayId) {
+    this.markGiveawayResultAnnouncedStatement.run(giveawayId);
+  }
+
+  deleteGiveaway(giveawayId) {
+    this.deleteGiveawayStatement.run(giveawayId);
   }
 
   resetCycle(guildId, cycleStartedAt) {
