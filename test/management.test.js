@@ -5,7 +5,7 @@ import { JailDatabase } from "../src/database.js";
 import { ManagementStore } from "../src/management-store.js";
 import { ManagementHandler } from "../src/management.js";
 import { memberLevel, assertAccess, assertTarget, assertRole } from "../src/access.js";
-import { ACTIONS, managementCommands } from "../src/management-commands.js";
+import { ACTIONS, commandLevels, managementCommands } from "../src/management-commands.js";
 
 const rank = (position) => ({ position, comparePositionTo(other) { return position - other.position; } });
 function member(id, position, roles = []) {
@@ -17,6 +17,12 @@ test("all command definitions serialize and have unique actions", () => {
   for (const command of managementCommands) assert.ok(command.toJSON());
   assert.equal(new Set(ACTIONS.map(([g, a]) => `${g}.${a}`)).size, ACTIONS.length);
   assert.equal(ACTIONS.length, 42);
+});
+test("Jail is absent from command registration, access configuration and help", () => {
+  assert.deepEqual(managementCommands.map((command) => command.toJSON().name), ["gestion", "acces", "aide"]);
+  assert.ok(Object.keys(commandLevels).every((key) => !key.startsWith("jail.")));
+  const handler = new ManagementHandler(null, null);
+  assert.doesNotMatch(JSON.stringify(handler.help(member("owner", 20), config).toJSON()), /jail/i);
 });
 test("levels are cumulative, owner-only level 4, no native permission bypass", () => {
   assert.equal(memberLevel(member("owner", 1), config), 4);

@@ -52,14 +52,8 @@ export const ACTIONS = [
   ["vocal", "muet", 2, "Active ou désactive le mute serveur", [user, ["Boolean", "activer", "Activer le mute serveur", true], reason]],
   ["vocal", "sourd", 2, "Active ou désactive la sourdine serveur", [user, ["Boolean", "activer", "Activer la sourdine serveur", true], reason]],
 ];
-export const JAIL_ACCESS = {
-  "jail.setup": 3, "jail.mettre": 1, "jail.liberer": 1, "jail.etat": 0,
-  "jail.surveillance": 3, "jail.serveurs.ajouter": 3,
-  "jail.serveurs.retirer": 3, "jail.serveurs.liste": 3,
-};
 export const commandLevels = Object.fromEntries([
   ...ACTIONS.map(([group, action, level]) => [`${group}.${action}`, level]),
-  ...Object.entries(JAIL_ACCESS),
 ]);
 
 function addOption(sub, [type, optionName, description, required, min, max]) {

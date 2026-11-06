@@ -57,7 +57,7 @@ export class ManagementHandler {
   }
   help(actor, config) {
     const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("Gestion — commandes par niveau")
-      .setDescription(`Ton niveau : **${LEVELS[memberLevel(actor, config)]}**.\nLes niveaux supérieurs héritent des commandes inférieures. Utilise /gestion puis le groupe et l’action. Les clés jail correspondent à /jail.`);
+      .setDescription(`Ton niveau : **${LEVELS[memberLevel(actor, config)]}**.\nLes niveaux supérieurs héritent des commandes inférieures. Utilise /gestion puis le groupe et l’action.`);
     for (let level = 0; level <= 4; level++) {
       const keys = Object.entries(commandLevels).filter(([key, base]) => requiredLevel(config, key, base) === level).map(([key]) => `\`${key}\``);
       embed.addFields({ name: `${level} — ${LEVELS[level]}`, value: (keys.join(", ") || "Aucune commande") + (level === 4 ? "\n`/acces` : attribution des niveaux, exigences des commandes et logs." : "") });
