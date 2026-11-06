@@ -18,6 +18,7 @@ import { createRolePanel } from "./panel.js";
 import { createRankAnnouncement } from "./rank-announcements.js";
 import { createTestPanel } from "./test-panel.js";
 import { SecurityManager } from "./security-manager.js";
+import { parseSlashInvocation, SLASH_COMMANDS } from "./slash-commands.js";
 import { TestSessionManager } from "./test-session-manager.js";
 import {
   formatCount,
@@ -328,69 +329,55 @@ function createStatsEmbed(member, settings) {
 function createHelpEmbed() {
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle("Commandes de Moko Rank")
-    .setDescription("Préfixe du bot : `+`")
+    .setTitle("Guide complet · Moko Rank")
+    .setDescription(
+      "Utilise les commandes `/` dans la barre de saisie Discord. Les quotas de chaque niveau exigent **à la fois** le nombre de messages et les heures vocales indiqués dans le panneau. Les compteurs sont remis à zéro tous les 14 jours."
+    )
     .addFields(
       {
-        name: "+help",
-        value: "Affiche cette aide.",
-        inline: false,
-      },
-      {
-        name: "+stats [@membre]",
-        value: "Affiche ta progression ou celle d’un membre.",
-        inline: false,
-      },
-      {
-        name: "+panel",
+        name: "Progression et rôles",
         value:
-          "Ouvre le panneau de configuration des rôles (permission Gérer les rôles requise).",
+          "`/stats [membre]` affiche la progression.\n`/panel` configure les rôles des cinq niveaux ; `/panel retirer:<niveau>` retire un rôle.\n`/testpanel` ouvre le test ; `/logpanel` choisit le salon des annonces.",
         inline: false,
       },
       {
-        name: "+panel retirer <palier>",
-        value: "Retire le rôle configuré pour un palier de 1 à 5.",
-        inline: false,
-      },
-      {
-        name: "+testpanel",
+        name: "Giveaway",
         value:
-          "Ouvre un test temporaire : un message normal fait passer au palier suivant, sans changer les vrais compteurs. Alias : +test.",
-        inline: false,
-      },
-      {
-        name: "+logpanel [off]",
-        value:
-          "Choisis le salon des annonces de rang, ou désactive les annonces.",
-        inline: false,
-      },
-      {
-        name: "+giveaway <durée> <gagnants> <lot>",
-        value:
-          "Lance un tirage stylé, par exemple `+giveaway 2h 1 Nitro` (permission Gérer le serveur requise).",
+          "`/giveaway durée gagnants lot` lance un tirage. Exemple : `/giveaway durée:2h gagnants:1 lot:Nitro`.",
         inline: false,
       },
       {
         name: "Modération",
         value:
-          "`+kick`, `+ban`, `+unban`, `+timeout`, `+untimeout`, `+clear`, `+warn`, `+warnings`, `+clearwarnings`.",
+          "`/kick`, `/ban`, `/unban`, `/timeout`, `/untimeout`, `/clear`, `/warn`, `/warnings` et `/clearwarnings`. Chaque commande vérifie les permissions Discord nécessaires.",
         inline: false,
       },
       {
-        name: "Staff & propriétaire",
+        name: "Staff et propriétaire",
         value:
-          "`+staff role/add/remove/list`, `+gbl ban/remove/list`, `+owner stats/guilds`.",
+          "`/staff role|ajouter|retirer|liste` gère le staff.\n`/owner stats|serveurs` est réservé au propriétaire.\n`/gbl ban|retirer|liste` gère la liste noire globale ; le bannissement demande une confirmation.",
         inline: false,
       },
       {
-        name: "Brigade de sécurité",
+        name: "Brigade et anti-raid",
         value:
-          "`+brigade role/jailrole/quitterole/seuil/raid`, `+enemy add/remove/list`, `+jail`, `+unjail`, `+quitterlist`, `+quittervalider`, `+quitterrefuser`.",
+          "`/brigade role`, `/brigade jail`, `/brigade role_sortie`, `/brigade raid` et `/brigade seuil` configurent les rôles, le jail et le seuil anti-raid. `/security` affiche l’état des protections.",
+        inline: false,
+      },
+      {
+        name: "Liste ennemie et jail",
+        value:
+          "`/enemy ajouter|retirer|liste` gère les IDs manuellement : le bot ne peut pas détecter les membres de serveurs où il n’est pas installé. `/jail` et `/unjail` sont les actions de brigade. La personne jailée peut demander une vérification avec `/quitter`; la brigade suit les demandes avec `/quitterlist`, `/quittervalider` ou `/quitterrefuser`.",
+        inline: false,
+      },
+      {
+        name: "Aide",
+        value: "`/help` affiche ce guide. Les commandes de sécurité personnalisées sont limitées à la brigade.",
         inline: false,
       }
     )
     .setFooter({
-      text: "Les quotas commencent à l’arrivée du bot et se réinitialisent tous les 14 jours.",
+      text: "Les commandes préfixées par + restent disponibles en complément.",
     });
 }
 
@@ -513,6 +500,67 @@ async function handleGiveawayCommand(message, args) {
   }
 }
 
+async function registerSlashCommands(guild) {
+  try {
+    await guild.commands.set(SLASH_COMMANDS);
+    console.info(`Registered ${SLASH_COMMANDS.length} slash commands in guild ${guild.id}.`);
+  } catch (error) {
+    console.error(
+      `Could not register slash commands in guild ${guild.id}. Check the bot invite includes the applications.commands scope.`,
+      error
+    );
+  }
+}
+
+async function handleSlashCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "Utilise cette commande dans un serveur.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply();
+  try {
+    const parsed = parseSlashInvocation(interaction);
+    const requestedUser = interaction.options.getUser("membre");
+    const targetMember =
+      parsed.member ??
+      (requestedUser
+        ? await interaction.guild.members.fetch(requestedUser.id).catch(() => null)
+        : null);
+    const actor =
+      interaction.guild.members.cache.get(interaction.user.id) ??
+      (await interaction.guild.members.fetch(interaction.user.id).catch(() => null));
+
+    const message = {
+      content: `+${parsed.command}`,
+      slashArgs: parsed.args,
+      slashTargetRequested: Boolean(requestedUser),
+      guild: interaction.guild,
+      member: actor,
+      author: interaction.user,
+      channel: interaction.channel,
+      mentions: {
+        members: { first: () => targetMember },
+        roles: { first: () => parsed.role },
+        channels: { first: () => parsed.channel },
+      },
+      reply: (payload) => interaction.editReply(payload),
+    };
+    await handlePrefixCommand(message);
+  } catch (error) {
+    console.error(
+      `Slash command /${interaction.commandName} failed in guild ${interaction.guild.id}.`,
+      error
+    );
+    await interaction
+      .editReply("La commande a échoué. Vérifie les permissions et la hiérarchie des rôles du bot.")
+      .catch(() => undefined);
+  }
+}
+
 async function handleLogChannelSelect(interaction) {
   if (!interaction.guild) return;
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles)) {
@@ -544,7 +592,8 @@ async function handleLogChannelSelect(interaction) {
 
 async function handlePrefixCommand(message) {
   const body = message.content.slice(PREFIX.length).trim();
-  const [command = "", ...args] = body.split(/\s+/);
+  const [command = "", ...parsedArgs] = body.split(/\s+/);
+  const args = message.slashArgs ?? parsedArgs;
   const normalizedCommand = command.toLowerCase();
 
   if (normalizedCommand === "help" || normalizedCommand === "aide") {
@@ -600,10 +649,12 @@ async function handlePrefixCommand(message) {
   }
 
   if (normalizedCommand === "stats" || normalizedCommand === "me") {
-    const member =
-      message.mentions.members.first() ??
-      message.member ??
-      (await message.guild.members.fetch(message.author.id).catch(() => null));
+    const mentionedMember = message.mentions.members.first();
+    const member = message.slashTargetRequested
+      ? mentionedMember
+      : mentionedMember ??
+        message.member ??
+        (await message.guild.members.fetch(message.author.id).catch(() => null));
     if (!member) {
       await message.reply("Je n’ai pas trouvé ce membre dans le serveur.");
       return;
@@ -621,6 +672,7 @@ async function handlePrefixCommand(message) {
 client.once("ready", async () => {
   console.info(`Moko Rank is online as ${client.user.tag}.`);
   for (const guild of client.guilds.cache.values()) {
+    await registerSlashCommands(guild);
     try {
       database.ensureGuild(guild.id);
       voiceTracker.startFromGuild(guild);
@@ -706,6 +758,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  if (interaction.isChatInputCommand()) {
+    await handleSlashCommand(interaction);
+    return;
+  }
+
   if (interaction.isButton()) {
     if (interaction.customId.startsWith("moko:giveaway:enter:")) {
       try {
@@ -859,6 +916,7 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on("guildCreate", async (guild) => {
   try {
+    await registerSlashCommands(guild);
     database.ensureGuild(guild.id);
     voiceTracker.startFromGuild(guild);
     pauseBlacklistedVoice(guild);

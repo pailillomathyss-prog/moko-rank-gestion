@@ -43,6 +43,7 @@ export class SecurityManager {
           ? {
               ViewChannel: true,
               SendMessages: true,
+              UseApplicationCommands: true,
               ReadMessageHistory: true,
               Connect: false,
               Speak: false,
@@ -158,6 +159,7 @@ export class SecurityManager {
         ? {
             ViewChannel: true,
             SendMessages: true,
+            UseApplicationCommands: true,
             ReadMessageHistory: true,
             Connect: false,
             Speak: false,

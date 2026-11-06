@@ -1,6 +1,6 @@
 # Moko Rank
 
-Bot Discord de progression par messages et temps passé en vocal. Le panneau de configuration est un message interactif dans Discord ; aucun site web n'est nécessaire.
+Bot Discord de progression par messages et temps passé en vocal. Les commandes slash `/` sont enregistrées dans les serveurs au démarrage ; le préfixe `+` reste aussi disponible. Le panneau de configuration est un message interactif dans Discord ; aucun site web n'est nécessaire.
 
 ## Paliers
 
@@ -21,6 +21,8 @@ Les périodes durent exactement 14 jours. Pour chaque serveur, la première pér
 Le comptage commence lorsque le bot rejoint le serveur : Discord ne permet pas de reconstituer le temps vocal passé avant son installation. Les messages de bots et les commandes commençant par `+` ne sont pas comptés. Le vocal mesure le temps connecté à un salon vocal, sans exiger que le membre parle ; les bots et le salon AFK du serveur sont exclus.
 
 ## Commandes
+
+Utilise `/help` pour afficher l’embed-guide dans Discord. Les commandes slash apparaissent dans le menu `/` du serveur ; le scope OAuth2 `applications.commands` doit être présent sur l’invitation du bot.
 
 - `+help` — affiche l'aide.
 - `+stats` ou `+me` — affiche ta progression.
