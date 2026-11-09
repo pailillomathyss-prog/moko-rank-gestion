@@ -71,7 +71,7 @@ class Engine:
             if result["guild"] != guild:
                 continue
             try:
-                # Edit the original message: idempotent, no duplicate victory on retry.
+                # Transport checks for an existing result reply before retrying.
                 await self.transport.result(result, Question.deserialize(result["question"]))
                 await self.store.mark_announced(result["id"])
             except Exception:

@@ -34,14 +34,7 @@ class DiscordTransport:
 
     async def question(self, round_, question, png):
         channel = await self.channel(round_["channel"])
-        embed = discord.Embed(
-            title="🧩 À toi de deviner !", color=COLORS["question"],
-            description=f"**{question.category}** · Tu as **{round_['duration']} secondes**.\n"
-                        "Le premier à trouver remporte **1 point**. Réponds directement dans ce salon.",
-        )
-        embed.set_image(url="attachment://devinette.png")
-        embed.set_footer(text=f"Devinette #{round_['id']} • Accents et majuscules ignorés")
-        message = await channel.send(embed=embed, file=discord.File(io.BytesIO(png), filename="devinette.png"))
+        message = await channel.send(file=discord.File(io.BytesIO(png), filename="devinette.png"))
         return message.id, message.created_at.timestamp()
 
     async def result(self, result, question):
@@ -49,32 +42,22 @@ class DiscordTransport:
         status = result["status"]
         if status == "won":
             elapsed = f"{result['elapsed']:.2f}".replace(".", ",")
-            embed = discord.Embed(title="🎉 BRAVO !", color=COLORS[status],
-                                  description=f"**{safe_name(result['winner_name'])}** a trouvé la bonne réponse !")
-            embed.add_field(name="🧠 Réponse", value=question.answer, inline=False)
-            embed.add_field(name="⏱️ Temps", value=f"{elapsed} secondes")
-            embed.add_field(name="🏆 Points gagnés", value="**+1**")
-            embed.add_field(name="⭐ Total", value=f"**{result['total']} points**")
+            content = f"Bravo <@{result['winner']}> ! +1 en {elapsed} secondes. Total : {result['total']} points."
         elif status == "expired":
-            embed = discord.Embed(title="⌛ Temps écoulé !", color=COLORS[status],
-                                  description=f"Personne n’a trouvé à temps.\n\n🧠 La réponse était : **{question.answer}**.")
+            content = f"Temps écoulé ! La bonne réponse était : {question.answer}."
         else:
-            embed = discord.Embed(title="⏸️ Devinette interrompue", color=COLORS["cancelled"],
-                                  description="La configuration du jeu a changé. Aucun point n’est attribué.")
-        embed.set_footer(text=f"Devinette #{result['id']} • /points · /classement · /monrang")
-        # Keep the image attachment. Editing this exact message is safe to retry.
-        embed.set_image(url="attachment://devinette.png")
-        try:
-            await channel.get_partial_message(result["message_id"]).edit(embed=embed)
-        except discord.NotFound:
-            # Deleted messages cannot be edited. A replacement carries the same idempotency marker.
-            marker = f"Résultat #{result['id']}"
-            async for message in channel.history(limit=100):
-                if message.author.id == self.client.user.id and any(e.footer.text == marker for e in message.embeds):
-                    return
-            embed.set_image(url=None)
-            embed.set_footer(text=marker)
-            await channel.send(embed=embed)
+            content = "Devinette interrompue : la configuration a changé. Aucun point attribué."
+        # A separate reply leaves the original image unchanged. Recover an already
+        # delivered reply if a crash occurred before the SQLite acknowledgement.
+        async for message in channel.history(after=discord.Object(id=result["message_id"]), limit=None):
+            if (message.author.id == self.client.user.id and message.reference
+                    and message.reference.message_id == result["message_id"]):
+                return
+        await channel.send(
+            content,
+            reference=discord.MessageReference(message_id=result["message_id"], channel_id=result["channel"], fail_if_not_exists=False),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 class QuizClient(discord.Client):

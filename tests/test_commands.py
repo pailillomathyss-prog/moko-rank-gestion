@@ -9,6 +9,11 @@ from quiz.discord_bot import QuizClient, DiscordTransport
 from quiz.questions import Question
 
 
+async def empty_history(**kwargs):
+    if False:
+        yield None
+
+
 class CommandTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.client = QuizClient(":memory:")
@@ -133,6 +138,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         sent = SimpleNamespace(id=99, created_at=SimpleNamespace(timestamp=lambda: 1000))
         partial = SimpleNamespace(edit=AsyncMock())
         channel = SimpleNamespace(send=AsyncMock(return_value=sent), get_partial_message=lambda _: partial)
+        channel.history = empty_history
         transport = DiscordTransport(self.client)
         transport.channel = AsyncMock(return_value=channel)
         question = Question("q", "Calcul", "12", [], expression="6 + 6")
@@ -140,21 +146,30 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await transport.question(row, question, question.image()), (99, 1000))
         payload = channel.send.call_args.kwargs
         self.assertEqual(payload["file"].filename, "devinette.png")
-        self.assertNotIn("12", payload["embed"].description)
+        self.assertEqual(set(payload), {"file"})
         await transport.result({**row, "message_id": 99, "status": "expired"}, question)
-        self.assertIn("**12**", partial.edit.call_args.kwargs["embed"].description)
+        self.assertIn("12", channel.send.call_args.args[0])
+        partial.edit.assert_not_awaited()
 
-    async def test_victory_embed_contains_name_answer_time_point_and_total(self):
+    async def test_victory_is_a_new_message_with_winner_time_point_and_total(self):
         partial = SimpleNamespace(edit=AsyncMock())
         transport = DiscordTransport(self.client)
-        transport.channel = AsyncMock(return_value=SimpleNamespace(get_partial_message=lambda _: partial))
+        channel = SimpleNamespace(send=AsyncMock(), history=empty_history, get_partial_message=lambda _: partial)
+        transport.channel = AsyncMock(return_value=channel)
         result = dict(channel=10, message_id=999, id=1, status="won", winner_name="Joueur",
-                      elapsed=7.42, total=15)
+                      winner=20, elapsed=7.42, total=15)
         await transport.result(result, Question("q", "Animal", "Éléphant", []))
-        embed = partial.edit.call_args.kwargs["embed"]
-        fields = {f.name: f.value for f in embed.fields}
-        self.assertIn("Joueur", embed.description)
-        self.assertEqual(fields["🧠 Réponse"], "Éléphant")
-        self.assertEqual(fields["⏱️ Temps"], "7,42 secondes")
-        self.assertEqual(fields["🏆 Points gagnés"], "**+1**")
-        self.assertEqual(fields["⭐ Total"], "**15 points**")
+        self.assertEqual(channel.send.call_args.args[0], "Bravo <@20> ! +1 en 7,42 secondes. Total : 15 points.")
+        self.assertNotIn("embed", channel.send.call_args.kwargs)
+        partial.edit.assert_not_awaited()
+
+    async def test_existing_result_reply_is_not_sent_twice(self):
+        client = SimpleNamespace(user=SimpleNamespace(id=42))
+        async def history(**kwargs):
+            yield SimpleNamespace(author=SimpleNamespace(id=42), reference=SimpleNamespace(message_id=999))
+        channel = SimpleNamespace(history=history, send=AsyncMock())
+        transport = DiscordTransport(client)
+        transport.channel = AsyncMock(return_value=channel)
+        await transport.result(dict(channel=10, message_id=999, id=1, status="won",
+                                    winner=20, elapsed=1, total=1), Question("q", "Animal", "Chat", []))
+        channel.send.assert_not_awaited()

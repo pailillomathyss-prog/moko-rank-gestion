@@ -124,15 +124,18 @@ Discord ou, à défaut, ceux enregistrés lors de la dernière victoire.
   d’un caractère est tolérée pour les réponses d’au moins cinq caractères.
   Les résultats de calcul sont comparés exactement ; aucune expression reçue
   n’est exécutée.
-- Un seul gagnant reçoit **+1 point**. La victoire affiche le pseudo, la réponse,
-  le temps à deux décimales et le total. Le temps est calculé entre les
+- La question affiche uniquement l’image, sans embed, titre ni consigne dans l’image
+  (pour les calculs, seule l’opération est affichée).
+- Un seul gagnant reçoit **+1 point**. Un nouveau message répond à l’image :
+  « Bravo @Joueur ! +1 en 7,42 secondes. Total : 15 points. »
+  Le temps est calculé entre les
   horodatages Discord de l’image et de la réponse.
 - À expiration, la réponse est révélée. La vérification tourne toutes les
   secondes : l’affichage peut avoir un léger délai, mais aucune réponse
   horodatée après l’échéance n’est acceptée.
-- Le message de l’image est transformé en embed vert de victoire ou orange
-  d’expiration. Modifier ce même message permet de réessayer l’annonce sans
-  publier plusieurs félicitations ni attribuer plusieurs points.
+- L’image d’origine reste inchangée. Le résultat est un message séparé ;
+  avant de réessayer une annonce, le bot recherche une réponse déjà envoyée
+  à cette image pour éviter les doublons. Les points restent transactionnels.
 
 ## Compteur et redémarrages
 

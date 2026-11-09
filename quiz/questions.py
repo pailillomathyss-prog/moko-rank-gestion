@@ -73,8 +73,6 @@ class Question:
         canvas = Image.new("RGB", (800, 560), "#101827")
         draw = ImageDraw.Draw(canvas)
         draw.rounded_rectangle((24, 24, 776, 536), radius=32, fill="#f4f7fc")
-        font = ImageFont.load_default(size=24)
-        draw.text((400, 63), "QUELLE EST LA REPONSE ?", font=font, fill="#526075", anchor="mm")
         if self.expression:
             # Pillow's bundled font has no multiplication-sign glyph.
             formula = f"{self.expression.replace('×', 'x')} = ?"
@@ -83,7 +81,6 @@ class Question:
             with Image.open(ROOT / "assets" / self.asset) as source:
                 picture = source.convert("RGBA").resize((320, 320), Image.Resampling.LANCZOS)
                 canvas.paste(picture, (240, 130), picture)
-        draw.text((400, 493), "Ecris ta reponse dans le salon", font=font, fill="#526075", anchor="mm")
         buffer = io.BytesIO()
         canvas.save(buffer, format="PNG")
         return buffer.getvalue()
