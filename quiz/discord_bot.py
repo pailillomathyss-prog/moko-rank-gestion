@@ -88,6 +88,7 @@ class QuizClient(discord.Client):
         self.game = None
         self.worker = None
         self.synced = set()
+        self.global_commands_cleared = False
         self.ready_lock = asyncio.Lock()
         self.install_commands()
         self.tree.error(self.command_error)
@@ -98,17 +99,39 @@ class QuizClient(discord.Client):
         self.game = Engine(self.store, self.bank, DiscordTransport(self))
         self.worker = asyncio.create_task(self.maintenance())
 
+    async def clear_global_commands(self):
+        """Remove remote legacy globals without losing local command definitions."""
+        definitions = self.tree.get_commands()
+        self.tree.clear_commands(guild=None)
+        try:
+            remaining = await self.tree.sync()
+            if remaining:
+                raise RuntimeError("Discord a conservé des commandes globales inattendues.")
+            self.global_commands_cleared = True
+            log.info("Anciennes commandes globales supprimées. Le jeu utilise les commandes par serveur.")
+        except (discord.HTTPException, RuntimeError):
+            log.exception("Nettoyage des commandes globales impossible ; il reste à réessayer.")
+        finally:
+            for command in definitions:
+                self.tree.add_command(command, override=True)
+
     async def sync_guild(self, guild):
         try:
+            self.tree.clear_commands(guild=guild)
             self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
+            registered = await self.tree.sync(guild=guild)
+            expected = {"config", "points", "classement", "monrang"}
+            if {command.name for command in registered} != expected:
+                raise RuntimeError("La liste des commandes Discord ne correspond pas au nouveau jeu.")
             self.synced.add(guild.id)
-            log.info("Commandes synchronisées pour le serveur %s.", guild.id)
-        except discord.HTTPException:
+            log.info("Serveur %s : anciennes commandes remplacées par /config, /points, /classement, /monrang.", guild.id)
+        except (discord.HTTPException, RuntimeError):
             log.exception("Synchronisation des commandes impossible pour %s.", guild.id)
 
     async def on_ready(self):
         async with self.ready_lock:
+            if not self.global_commands_cleared:
+                await self.clear_global_commands()
             for guild in self.guilds:
                 if guild.id not in self.synced:
                     await self.sync_guild(guild)

@@ -73,9 +73,21 @@ publication de code ne change pas automatiquement les réglages Fade Host.
    La permission **Administrator** n’est pas nécessaire pour le bot.
 6. Ouvrir le lien généré et inviter le bot dans le serveur. Vérifier les
    permissions particulières du salon, qui peuvent annuler celles du rôle.
-7. Au démarrage, les commandes sont synchronisées par serveur. Les anciennes
-   commandes de ce bot sont remplacées. Si la synchronisation échoue, la console
+7. Au démarrage, le bot efface ses anciennes commandes **globales**, puis remplace
+   toutes ses commandes dans chaque serveur par `/config`, `/points`,
+   `/classement` et `/monrang`. Il conserve ses définitions locales pendant le
+   nettoyage. Cela ne touche pas les commandes des autres bots.
+   Si la synchronisation échoue, la console
    indique le serveur concerné ; corriger l’invitation puis redémarrer.
+
+**Important : pousser sur GitHub ne modifie pas Discord tout seul.** Le nouveau
+processus Python doit démarrer avec le token de la même application Discord.
+Arrêter l’ancienne instance sur l’autre hébergeur, sinon elle peut réinscrire
+les anciennes commandes. La console doit afficher « Anciennes commandes globales
+supprimées » puis « anciennes commandes remplacées » pour le serveur. Discord
+peut conserver le menu en cache un court moment ; fermer puis rouvrir le menu
+des commandes après la synchronisation. Un token d’un autre bot ne permet pas
+de supprimer les commandes de l’ancien.
 
 Seuls les membres ayant **Administrateur** dans Discord utilisent `/config`.
 Les contrôles sont effectués à chaque exécution, pas uniquement dans le menu.

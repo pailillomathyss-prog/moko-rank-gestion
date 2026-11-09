@@ -34,6 +34,38 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         for command in self.client.tree.get_commands():
             command.to_dict(self.client.tree)
 
+    async def test_global_legacy_commands_are_cleared_without_losing_new_definitions(self):
+        payloads = []
+        async def sync(**kwargs):
+            payloads.append([c.name for c in self.client.tree.get_commands()])
+            return []
+        self.client.tree.sync = AsyncMock(side_effect=sync)
+        await self.client.clear_global_commands()
+        self.assertEqual(payloads, [[]])
+        self.assertTrue(self.client.global_commands_cleared)
+        self.assertEqual({c.name for c in self.client.tree.get_commands()}, {"config", "points", "classement", "monrang"})
+
+    async def test_failed_global_cleanup_restores_local_commands_for_retry(self):
+        self.client.tree.sync = AsyncMock(side_effect=RuntimeError("Discord unavailable"))
+        await self.client.clear_global_commands()
+        self.assertFalse(self.client.global_commands_cleared)
+        self.assertEqual({c.name for c in self.client.tree.get_commands()}, {"config", "points", "classement", "monrang"})
+
+    async def test_guild_sync_replaces_legacy_commands_with_only_new_game(self):
+        guild = discord.Object(id=123)
+        async def old_callback(interaction):
+            pass
+        self.client.tree.add_command(app_commands.Command(name="activite", description="Ancienne commande", callback=old_callback), guild=guild)
+        submitted = []
+        async def sync(**kwargs):
+            commands = self.client.tree.get_commands(guild=kwargs["guild"])
+            submitted.extend(c.name for c in commands)
+            return commands
+        self.client.tree.sync = AsyncMock(side_effect=sync)
+        await self.client.sync_guild(guild)
+        self.assertEqual(set(submitted), {"config", "points", "classement", "monrang"})
+        self.assertIn(guild.id, self.client.synced)
+
     async def test_every_config_command_checks_admin_at_execution(self):
         for command in self.client.tree.get_command("config").commands:
             self.assertTrue(command.checks)
