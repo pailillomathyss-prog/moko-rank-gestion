@@ -4,3 +4,8 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+__pycache__/
+*.py[cod]
+.pythonlibs/
+.pytest_cache/
+.coverage

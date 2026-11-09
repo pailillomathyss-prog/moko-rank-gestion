@@ -1,73 +1,199 @@
-# Bot Discord — rôles et quotas d’activité
+# Devinettes — bot Discord Python
 
-Le système précédent de gestion et de permissions est retiré. Ce bot propose uniquement `/activite panel`, `/activite progression` et `/activite guide`.
+Bot complet en **Python 3.11+ / discord.py** : images locales, calculs générés,
+réponses chronométrées, points persistants et configuration par serveur.
+Il remplace l’ancien bot JavaScript de quotas ; aucune commande de rôles,
+Jail ou gestion n’est conservée. Les anciennes bases et ressources Discord
+ne sont pas supprimées.
 
-## Installation sur Fade Host
+## Démarrage rapide sur Replit
 
-1. Utiliser Node.js 22 ou supérieur et la branche `main`.
-2. Installer les dépendances avec `npm install`, puis démarrer avec `npm start`.
-3. Définir `DISCORD_BOT_TOKEN` dans les variables sécurisées de l’hébergeur.
-4. Activer **Server Members Intent** dans le portail développeur Discord. Message Content Intent n’est **pas** nécessaire : le bot ne lit pas le contenu des messages.
-5. Inviter le bot avec les scopes `bot` et `applications.commands`. Permissions : **Gérer les rôles**, **Voir les salons**, **Envoyer des messages** et **Intégrer des liens**.
-6. Placer le rôle du bot au-dessus des rôles d’activité. Ne pas utiliser de rôles avec des permissions de modération ou d’administration : le bot accepte uniquement des rôles sans permissions.
-7. Conserver `DATA_DIR` sur un disque persistant (par défaut `./data`). La nouvelle base est `activity.sqlite`. L’ancienne base et les anciens rôles/salons ne sont pas effacés.
+Dans ce projet, les dépendances et le workflow **Discord — Devinettes** sont
+déjà configurés. Il reste à fournir le token et à inviter le bot.
 
-Au démarrage, le bot remplace les anciennes commandes du serveur. Les anciens niveaux de permissions du bot ne sont plus utilisés. Seuls le propriétaire et les membres avec la permission Discord **Administrateur** peuvent configurer le panneau. Les autres membres ont accès au guide et à leur progression.
+1. Dans **Secrets**, ajouter `TOKEN` avec le token du bot. Ne jamais le coller
+   dans un fichier versionné ou dans le chat. `DISCORD_BOT_TOKEN` reste accepté
+   pour compatibilité si `TOKEN` n’existe pas.
+2. Dans le portail Discord, activer **Message Content Intent** (voir ci-dessous).
+3. Lancer le workflow **Discord — Devinettes** avec Run. Il exécute :
+   `cd moko-rank-gestion && python main.py`.
+4. Dans Discord, un administrateur lance `/config salon salon:#jeu`,
+   puis `/config activer`.
+5. Par défaut, au 15e message de membre dans ce salon, une image apparaît.
+   Le premier qui répond juste en 20 secondes gagne un point.
 
-## Panneau Discord
+Pour une nouvelle importation du dépôt à sa racine :
 
-Lancer `/activite panel` :
+```sh
+python -m pip install -r requirements.txt
+python main.py --check
+python main.py
+```
 
-1. Sélectionner un palier de 1 à 15.
-2. Choisir son rôle Discord dans le sélecteur de rôles.
-3. Cliquer **Modifier les quotas** pour fixer les quatre valeurs : messages et heures pour l’obtenir, puis messages et heures par jour pour le garder.
-4. Utiliser **Désactiver sans retirer** pour arrêter le suivi de ce rôle sans le supprimer des membres.
+**Run dans l’éditeur n’est pas une garantie de fonctionnement 24 h/24.**
+Un bot Discord doit tourner comme processus permanent, pas comme site statique
+ni comme serveur qui s’éteint sans requêtes. Replit propose des Reserved VM pour
+les processus permanents, mais le disque des apps publiées n’est pas un stockage
+SQLite durable garanti entre redémarrages/publications. Cette version conserve
+SQLite conformément au cahier des charges : pour une utilisation permanente,
+choisir un hébergeur avec volume persistant et définir `DATA_DIR` vers ce volume.
+Ne pas republier sur un disque éphémère en supposant que les points survivront.
+Une migration vers un stockage géré nécessiterait un changement explicite.
 
-Un palier sans rôle est inactif. Le même rôle ne peut pas être associé à plusieurs paliers. Les quotas se sauvegardent immédiatement et persistent après redémarrage. Les modifications s’appliquent aux prochaines vérifications, y compris la prochaine vérification quotidienne. Remplacer le rôle d’un palier laisse l’ancien rôle aux membres et arrête son suivi.
+Documentation Replit :
+- https://docs.replit.com/core-concepts/project-editor/app-setup/secrets
+- https://docs.replit.com/features/publishing/deployment-types
 
-## Quotas proposés, tous modifiables
+### Si tu utilises encore Fade Host
 
-| Palier | Messages pour obtenir | Heures vocales pour obtenir | Messages quotidiens | Heures vocales quotidiennes |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | 500 | 10 | 150 | 2 |
-| 2 | 1 000 | 20 | 200 | 2,5 |
-| 3 | 1 500 | 30 | 250 | 3 |
-| 4 | 2 000 | 40 | 300 | 3,5 |
-| 5 | 2 500 | 50 | 350 | 4 |
-| 6 | 3 000 | 60 | 400 | 4,5 |
-| 7 | 3 500 | 70 | 450 | 5 |
-| 8 | 4 000 | 80 | 500 | 5,5 |
-| 9 | 4 500 | 90 | 550 | 6 |
-| 10 | 5 000 | 100 | 600 | 6,5 |
-| 11 | 5 500 | 110 | 650 | 7 |
-| 12 | 6 000 | 120 | 700 | 7,5 |
-| 13 | 6 500 | 130 | 750 | 8 |
-| 14 | 7 000 | 140 | 800 | 8,5 |
-| 15 | 7 500 | 150 | 850 | 9 |
+**Ce dépôt est maintenant Python, plus Node.js.** Choisir un environnement
+Python 3.11 ou supérieur dans le panneau :
 
-Dans les deux cas, c’est toujours **messages OU vocal**, jamais les deux obligatoires. Les rôles se cumulent : chaque palier atteint peut attribuer son rôle. Les valeurs élevées sont des suggestions, pas une obligation ; adapte-les à ta communauté.
+- Installation / build : `python -m pip install -r requirements.txt`
+- Démarrage : `python main.py`
+- Secret : `TOKEN` (ou l’ancien `DISCORD_BOT_TOKEN`)
+- Stockage : `DATA_DIR` sur le disque persistant de l’hébergeur.
 
-## Obtention, maintien et reset
+Ne plus utiliser `npm start` : l’ancien `package.json` a été retiré. Une
+publication de code ne change pas automatiquement les réglages Fade Host.
 
-- Les messages et le vocal sont cumulés sur des périodes fixes de **14 jours**, ancrées au jour d’initialisation du serveur. La date du prochain reset apparaît dans le panneau et la progression.
-- Le premier palier donne le rôle après **500 messages OU 10 h de vocal**.
-- Le maintien commence **le lendemain de l’obtention**, sur une journée complète. Exemple : rôle obtenu lundi à 18 h → mardi, atteindre **150 messages OU 2 h de vocal** → contrôle mercredi à minuit.
-- Si les deux compteurs sont sous leurs seuils, le rôle est retiré. Il ne pourra être regagné qu’à la période suivante, pour éviter une réattribution immédiate avec les anciens compteurs.
-- Les journées vont de minuit à minuit en **Europe/Paris**, changements d’heure inclus.
-- Le reset remet à zéro la progression affichée, mais ne retire pas les rôles à lui seul. Le maintien quotidien continue.
-- Le contrôle a lieu environ toutes les minutes. Il peut prendre plus de temps selon le nombre de membres et les limites de l’API Discord.
-- Un rôle déjà présent avant que le bot l’attribue reste manuel : le bot ne le retire pas. Retirer manuellement un rôle géré le bloque également jusqu’à la prochaine période.
+## Configuration dans Discord Developer Portal
 
-## Comptage et pannes
+1. Ouvrir https://discord.com/developers/applications et créer une application
+   (ou utiliser celle de l’ancien bot).
+2. Dans **Bot**, récupérer le token et le placer uniquement dans les secrets
+   de l’hébergement. Régénérer le token s’il a déjà été exposé.
+3. Dans **Privileged Gateway Intents**, activer **MESSAGE CONTENT INTENT**.
+   Il permet de lire les tentatives de réponses. **Server Members Intent**
+   et **Presence Intent** ne sont pas nécessaires.
+4. Dans **OAuth2 → URL Generator**, choisir les scopes **bot** et
+   **applications.commands**.
+5. Permissions à accorder : **View Channels**, **Send Messages**,
+   **Embed Links**, **Attach Files**, **Read Message History**.
+   La permission **Administrator** n’est pas nécessaire pour le bot.
+6. Ouvrir le lien généré et inviter le bot dans le serveur. Vérifier les
+   permissions particulières du salon, qui peuvent annuler celles du rôle.
+7. Au démarrage, les commandes sont synchronisées par serveur. Les anciennes
+   commandes de ce bot sont remplacées. Si la synchronisation échoue, la console
+   indique le serveur concerné ; corriger l’invitation puis redémarrer.
 
-- Un message maximum par membre toutes les **10 secondes**, tous salons confondus. Bots, webhooks et messages système exclus. Aucun contenu de message n’est conservé.
-- Le vocal compte même seul ou muet, sauf dans le salon AFK configuré sur le serveur. Bots exclus. Les transitions entre salons ne doublent pas les heures.
-- Le temps vocal est enregistré environ toutes les minutes et réparti entre les bonnes journées à minuit.
-- Aucun temps n’est inventé pendant une panne. Une interruption détectée de plus de deux minutes exempte les journées affectées de retrait automatique pour ne pas sanctionner une activité non mesurée. Une déconnexion Discord détectée exempte également sa journée.
-- Après redémarrage, le bot reprend le suivi des membres encore connectés, sans compter la durée d’arrêt. Jusqu’à une minute non enregistrée peut être perdue lors d’un arrêt brutal.
-- En cas d’erreur Discord, l’action est signalée dans la console Fade Host et retentée lors d’une vérification suivante. Les rôles incompatibles ne sont jamais attribués.
-- Les données d’activité sont conservées dans la base pour permettre les vérifications ; le reset de 14 jours est un changement de période de calcul, pas une suppression des données.
+Seuls les membres ayant **Administrateur** dans Discord utilisent `/config`.
+Les contrôles sont effectués à chaque exécution, pas uniquement dans le menu.
 
-## Vérifications locales
+## Commandes
 
-`npm test` teste les seuils OU, les resets, les jours de maintien, les pannes, la persistance, le vocal et les éléments du panneau sans connexion à Discord.
+| Commande | Fonction |
+| --- | --- |
+| `/points` | Mes points dans ce serveur |
+| `/points membre:@Quelquun` | Points d’un autre membre |
+| `/classement` | Top 10 avec pseudos, points et positions |
+| `/monrang` | Ma position, ou indication que je ne suis pas encore classé |
+| `/config salon salon:#jeu` | Choisir le salon textuel ; ne l’active pas implicitement |
+| `/config frequence messages:15` | Fréquence de 1 à 1 000 messages |
+| `/config temps secondes:20` | Chronomètre de 5 à 300 secondes |
+| `/config activer` | Activer après vérification du salon et des permissions |
+| `/config desactiver` | Mettre en pause sans effacer points ou compteur |
+| `/config statut` | État, salon, fréquence, durée et compteur courant |
+
+Les points et réglages sont **séparés par serveur**. Les égalités partagent le
+même rang (1, 1, 3…). Les pseudos du classement sont ceux présents dans le cache
+Discord ou, à défaut, ceux enregistrés lors de la dernière victoire.
+
+## Règles du jeu
+
+- **30 illustrations** d’animaux, fruits, aliments, objets et nature, associées
+  explicitement à leurs réponses et synonymes.
+- Environ une question sur cinq est un calcul : addition, soustraction ou
+  multiplication, dessiné dans une image. Résultats entiers positifs ou nuls.
+- Les dix dernières devinettes de chaque serveur sont évitées lors du tirage.
+- Images attachées sous le nom neutre `devinette.png`, sans réponse dans
+  le nom du fichier. Aucune API d’image ni clé payante nécessaire.
+- Accents, casse, articles et pluriels simples acceptés. Une petite faute
+  d’un caractère est tolérée pour les réponses d’au moins cinq caractères.
+  Les résultats de calcul sont comparés exactement ; aucune expression reçue
+  n’est exécutée.
+- Un seul gagnant reçoit **+1 point**. La victoire affiche le pseudo, la réponse,
+  le temps à deux décimales et le total. Le temps est calculé entre les
+  horodatages Discord de l’image et de la réponse.
+- À expiration, la réponse est révélée. La vérification tourne toutes les
+  secondes : l’affichage peut avoir un léger délai, mais aucune réponse
+  horodatée après l’échéance n’est acceptée.
+- Le message de l’image est transformé en embed vert de victoire ou orange
+  d’expiration. Modifier ce même message permet de réessayer l’annonce sans
+  publier plusieurs félicitations ni attribuer plusieurs points.
+
+## Compteur et redémarrages
+
+- Tous les nouveaux messages ordinaires des membres dans le salon choisi
+  comptent, **tentatives comprises**. Bots, webhooks, messages système et lignes
+  commençant par `/` ou `!` sont exclus. Les slash commands ne sont pas des
+  messages ordinaires.
+- Une seule devinette est active par serveur. Les messages pendant la partie
+  alimentent le compteur de la suivante ; le surplus est conservé.
+- Le compteur est consommé seulement une fois l’image envoyée et le round
+  activé en base. Un échec d’envoi conserve donc la progression et est retenté
+  après 30 secondes.
+- SQLite enregistre les points, la configuration, le compteur, les identifiants
+  des messages traités, l’échéance et le résultat des parties.
+- Un redémarrage reprend une partie active avec son échéance originale. Si
+  l’échéance est dépassée, le bot révèle la réponse sans prolonger le temps.
+- Les messages envoyés pendant l’arrêt du bot ne sont pas rejoués : il ne peut
+  pas déterminer de façon fiable le premier gagnant d’une période hors ligne.
+- Si l’arrêt survient exactement entre l’envoi HTTP de l’image et la sauvegarde
+  de son identifiant, la partie incomplète est abandonnée sans point, le compteur
+  reste intact et une nouvelle question est lancée. Une ancienne image peut
+  alors rester visible : elle ne correspond plus à une partie active.
+- Désactiver le jeu ou changer de salon interrompt la partie courante sans
+  point ; le compteur restant est conservé. Fréquence et durée modifiées
+  s’appliquent aux prochaines parties.
+- L’enregistrement du gagnant et du point est une seule transaction. Un échec
+  d’annonce ne supprime pas le point ; l’annonce est retentée.
+- Utiliser **une seule instance** du bot pour ce fichier de données.
+
+La base se trouve dans `DATA_DIR/quiz.sqlite` (par défaut `data/` à côté de
+`main.py`). Pour une sauvegarde simple, arrêter proprement le bot puis copier
+le dossier `data/`. Aucun token, contenu des conversations ou mot de passe
+n’est enregistré en base ; seuls les IDs, pseudos de gagnants et données du jeu
+le sont. Les anciennes bases `activity.sqlite` / `jail.sqlite` ne sont pas lues.
+
+## Fichiers
+
+```text
+main.py                    Entrée du programme et validation hors ligne
+requirements.txt           Dépendances Python épinglées
+quiz/discord_bot.py        Commandes, événements et embeds Discord
+quiz/engine.py             Déclenchement, réponses, temps et reprise
+quiz/storage.py            SQLite asynchrone et transactions
+quiz/questions.py          Choix, tolérance des réponses et rendu PNG
+assets/questions.json     Banque avec réponses et synonymes
+assets/*.png              30 images locales Twemoji
+assets/checksums.json      Contrôle d’intégrité et des doublons
+assets/ATTRIBUTION.md      Licence CC BY 4.0 et source des illustrations
+scripts/download_images.py Réimportation facultative des images officielles
+tests/                    Tests sans token ni serveur réel
+```
+
+## Vérification et dépannage
+
+```sh
+python main.py --check
+python -m unittest discover -s tests -v
+```
+
+Les tests couvrent les commandes et leurs contrôles d’accès, les points et rangs,
+les réponses simultanées, le seuil des 15 messages, les exclusions, la durée,
+les pannes d’envoi, les redémarrages, la persistance et toutes les images.
+Ils simulent Discord : une connexion réelle demande un token et un serveur
+d’essai. `--check` ne prétend pas connecter le bot.
+
+- **Token absent ou invalide** : vérifier les Secrets, jamais publier sa valeur.
+- **PrivilegedIntentsRequired** : activer Message Content Intent.
+- **Aucune question** : `/config statut`, vérifier le salon, l’activation,
+  le compteur et les permissions du bot.
+- **Réponses non reconnues** : vérifier Message Content Intent et les synonymes
+  dans `assets/questions.json`.
+- **Image absente** : conserver le dossier `assets/` et la permission Attach Files.
+- **Erreur SQLite** : vérifier le chemin, le disque disponible et les droits
+  d’écriture. Ne jamais supprimer la base pour « réparer » sans sauvegarde.
+- Les avertissements `PyNaCl` / `davey` indiquent que l’audio vocal n’est pas
+  installé ; ce jeu n’utilise pas le vocal et n’en a pas besoin.
