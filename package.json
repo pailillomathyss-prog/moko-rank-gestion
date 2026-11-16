@@ -1,0 +1,17 @@
+{
+  "name": "supreme-discord-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bot Discord de gestion, modération, giveaways et niveaux.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3"
+  }
+}

@@ -42,7 +42,16 @@ class Storage:
           CREATE TABLE IF NOT EXISTS seen_messages (
             id INTEGER PRIMARY KEY, guild INTEGER NOT NULL
           );
+          CREATE TABLE IF NOT EXISTS reset_markers (
+            name TEXT PRIMARY KEY
+          );
         """)
+        await self.db.execute("BEGIN IMMEDIATE")
+        already_reset = await self._one("SELECT name FROM reset_markers WHERE name='full_bot_reset_v1'")
+        if not already_reset:
+            for table in ("settings", "rounds", "scores", "seen_messages"):
+                await self.db.execute(f"DELETE FROM {table}")
+            await self.db.execute("INSERT INTO reset_markers(name) VALUES ('full_bot_reset_v1')")
         await self.db.commit()
         return self
 

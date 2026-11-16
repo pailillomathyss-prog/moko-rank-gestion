@@ -1,0 +1,242 @@
+{
+  "elephant": {
+    "title": "Elephant",
+    "author": "Marion Doss",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/7337467@N04/2683616145"
+  },
+  "lion": {
+    "title": "Lion",
+    "author": "wwarby",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/26782864@N00/7190833746"
+  },
+  "chat": {
+    "title": "Cat",
+    "author": "yeungb",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/10215513@N00/10373218496"
+  },
+  "chien": {
+    "title": "Dog",
+    "author": "Kyrre Gjerstad",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/77790766@N08/8283624725"
+  },
+  "lapin": {
+    "title": "Rabbit",
+    "author": "Marit & Toomas Hinnosaar",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/27519540@N04/3706445364"
+  },
+  "tortue": {
+    "title": "Sea turtle swim-by",
+    "author": "quinet",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/91994044@N00/54275604103"
+  },
+  "papillon": {
+    "title": "Butterfly",
+    "author": "Droid Gingerbread",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/63259711@N04/5865832313"
+  },
+  "dauphin": {
+    "title": "Dolphin Jump",
+    "author": "ajmexico",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/15587432@N02/4519830578"
+  },
+  "grenouille": {
+    "title": "Frog",
+    "author": "g_kovacs",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/21923568@N00/234866027"
+  },
+  "girafe": {
+    "title": "Giraffe",
+    "author": "jrobertmoore",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/23862149@N05/2271387261"
+  },
+  "pomme": {
+    "title": "apple",
+    "author": "London looks",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/24164096@N00/4972889339"
+  },
+  "banane": {
+    "title": "Banana Extract",
+    "author": "JD Hancock",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/83346641@N00/4687393054"
+  },
+  "fraise": {
+    "title": "Strawberry",
+    "author": "Kamil Porembiński",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/22178197@N00/8753176643"
+  },
+  "ananas": {
+    "title": "Street pineapple",
+    "author": "tyler_haglund",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/81459822@N00/4507086509"
+  },
+  "pastèque": {
+    "title": "watermelon",
+    "author": "moreno0101",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/27962578@N02/2830413211"
+  },
+  "citron": {
+    "title": "Lemon",
+    "author": "wwarby",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/26782864@N00/11782413744"
+  },
+  "carotte": {
+    "title": "Carrot Close",
+    "author": "Mason Masteka",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/37411274@N02/4804704698"
+  },
+  "pizza": {
+    "title": "Pizza",
+    "author": "Seth W.",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/62999165@N00/2150948508"
+  },
+  "croissant": {
+    "title": "Croissant",
+    "author": "Cafeterías Nebraska",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/92810457@N08/8691108157"
+  },
+  "fromage": {
+    "title": "Cheese",
+    "author": "Beige Alert",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/53332339@N00/84662055"
+  },
+  "velo": {
+    "title": "Bicycle",
+    "author": "echiner1",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/30567804@N00/854798722"
+  },
+  "parapluie": {
+    "title": "umbrella",
+    "author": "abdulrahman.elections",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/62474035@N06/5690550777"
+  },
+  "cle": {
+    "title": "The Berlin Key",
+    "author": "illustir",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/12505664@N00/19083717299"
+  },
+  "reveil": {
+    "title": "Clock",
+    "author": "wwarby",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/26782864@N00/11271815226"
+  },
+  "ciseaux": {
+    "title": "Operating scissors",
+    "author": "jdlasica",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/36521958135@N01/5060655161"
+  },
+  "guitare": {
+    "title": "guitar",
+    "author": "Ju-x",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/54667153@N00/7969471"
+  },
+  "livre": {
+    "title": "Open book",
+    "author": "Honou",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/9186550@N08/2936937247"
+  },
+  "ballon": {
+    "title": "Disco ball",
+    "author": "Bruno Girin",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/16405999@N00/73017482"
+  },
+  "soleil": {
+    "title": "sUn - sKy",
+    "author": "Boo - M",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "source": "https://www.flickr.com/photos/91351781@N07/8338151262"
+  },
+  "arcenciel": {
+    "title": "Rainbow",
+    "author": "Arch_Sam",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "source": "https://www.flickr.com/photos/132084522@N05/17010519005"
+  }
+}

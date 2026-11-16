@@ -44,7 +44,7 @@ class DiscordTransport:
             elapsed = f"{result['elapsed']:.2f}".replace(".", ",")
             content = f"Bravo <@{result['winner']}> ! +1 en {elapsed} secondes. Total : {result['total']} points."
         elif status == "expired":
-            content = f"Temps écoulé ! La bonne réponse était : {question.answer}."
+            content = f"Personne n’a trouvé à temps. La bonne réponse était : {question.answer}."
         else:
             content = "Devinette interrompue : la configuration a changé. Aucun point attribué."
         # A separate reply leaves the original image unchanged. Recover an already
@@ -73,7 +73,6 @@ class QuizClient(discord.Client):
         self.synced = set()
         self.global_commands_cleared = False
         self.ready_lock = asyncio.Lock()
-        self.install_commands()
         self.tree.error(self.command_error)
 
     async def setup_hook(self):
@@ -83,31 +82,25 @@ class QuizClient(discord.Client):
         self.worker = asyncio.create_task(self.maintenance())
 
     async def clear_global_commands(self):
-        """Remove remote legacy globals without losing local command definitions."""
-        definitions = self.tree.get_commands()
+        """Remove every global application command from Discord."""
         self.tree.clear_commands(guild=None)
         try:
             remaining = await self.tree.sync()
             if remaining:
                 raise RuntimeError("Discord a conservé des commandes globales inattendues.")
             self.global_commands_cleared = True
-            log.info("Anciennes commandes globales supprimées. Le jeu utilise les commandes par serveur.")
+            log.info("Toutes les commandes globales du bot ont été supprimées.")
         except (discord.HTTPException, RuntimeError):
-            log.exception("Nettoyage des commandes globales impossible ; il reste à réessayer.")
-        finally:
-            for command in definitions:
-                self.tree.add_command(command, override=True)
+            log.exception("Suppression des commandes globales impossible ; nouvelle tentative au prochain démarrage.")
 
     async def sync_guild(self, guild):
         try:
             self.tree.clear_commands(guild=guild)
-            self.tree.copy_global_to(guild=guild)
             registered = await self.tree.sync(guild=guild)
-            expected = {"config", "points", "classement", "monrang"}
-            if {command.name for command in registered} != expected:
-                raise RuntimeError("La liste des commandes Discord ne correspond pas au nouveau jeu.")
+            if registered:
+                raise RuntimeError("Discord a conservé des commandes de serveur inattendues.")
             self.synced.add(guild.id)
-            log.info("Serveur %s : anciennes commandes remplacées par /config, /points, /classement, /monrang.", guild.id)
+            log.info("Toutes les commandes du serveur %s ont été supprimées.", guild.id)
         except (discord.HTTPException, RuntimeError):
             log.exception("Synchronisation des commandes impossible pour %s.", guild.id)
 
@@ -174,110 +167,6 @@ class QuizClient(discord.Client):
         missing = [name for name in required if not getattr(permissions, name)]
         if missing:
             raise ValueError("Permissions manquantes dans le salon : " + ", ".join(missing))
-
-    def install_commands(self):
-        config = app_commands.Group(name="config", description="Configuration du jeu de devinettes.",
-                                    default_permissions=discord.Permissions(administrator=True), guild_only=True)
-
-        @config.command(name="salon", description="Choisir le salon textuel du jeu.")
-        @app_commands.checks.has_permissions(administrator=True)
-        @app_commands.describe(salon="Salon où compter les discussions et envoyer les devinettes.")
-        async def salon(i: discord.Interaction, salon: discord.TextChannel):
-            await i.response.defer(ephemeral=True)
-            try:
-                self.validate_channel(salon, i.guild)
-            except ValueError as exc:
-                return await i.followup.send(str(exc), ephemeral=True)
-            await self.game.configure(i.guild_id, channel=salon.id)
-            await i.followup.send(f"Salon configuré : {salon.mention}. Utilise `/config activer` pour démarrer.", ephemeral=True)
-
-        @config.command(name="frequence", description="Messages nécessaires avant une devinette (15 par défaut).")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def frequence(i: discord.Interaction, messages: app_commands.Range[int, 1, 1000]):
-            await i.response.defer(ephemeral=True)
-            await self.game.configure(i.guild_id, frequency=messages)
-            await i.followup.send(f"Une devinette tous les **{messages} messages**. Compteur conservé.", ephemeral=True)
-
-        @config.command(name="temps", description="Temps de réponse (20 secondes par défaut).")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def temps(i: discord.Interaction, secondes: app_commands.Range[int, 5, 300]):
-            await i.response.defer(ephemeral=True)
-            await self.game.configure(i.guild_id, duration=secondes)
-            await i.followup.send(f"Les prochaines devinettes dureront **{secondes} secondes**.", ephemeral=True)
-
-        @config.command(name="activer", description="Activer les devinettes automatiques.")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def activer(i: discord.Interaction):
-            await i.response.defer(ephemeral=True)
-            current = await self.store.settings(i.guild_id)
-            if not current["channel"]:
-                return await i.followup.send("Choisis d’abord `/config salon`.", ephemeral=True)
-            try:
-                channel = await self.game.transport.channel(current["channel"])
-                self.validate_channel(channel, i.guild)
-            except (ValueError, discord.HTTPException) as exc:
-                return await i.followup.send(f"Salon inaccessible ou permissions insuffisantes ({type(exc).__name__}).", ephemeral=True)
-            await self.game.configure(i.guild_id, enabled=1)
-            await i.followup.send("✅ Jeu activé. Les prochaines discussions déclencheront les devinettes.", ephemeral=True)
-
-        @config.command(name="desactiver", description="Désactiver le jeu sans effacer les points ni le compteur.")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def desactiver(i: discord.Interaction):
-            await i.response.defer(ephemeral=True)
-            await self.game.configure(i.guild_id, enabled=0)
-            await i.followup.send("⏸️ Jeu désactivé. Points et compteur conservés ; devinette en cours interrompue.", ephemeral=True)
-
-        @config.command(name="statut", description="Afficher les réglages et le compteur actuels.")
-        @app_commands.checks.has_permissions(administrator=True)
-        async def statut(i: discord.Interaction):
-            await i.response.defer(ephemeral=True)
-            current = await self.store.settings(i.guild_id)
-            active = await self.store.live(i.guild_id)
-            embed = discord.Embed(title="⚙️ Jeu de devinettes", color=COLORS["question"])
-            embed.add_field(name="État", value="Actif" if current["enabled"] else "En pause")
-            embed.add_field(name="Salon", value=f"<#{current['channel']}>" if current["channel"] else "Non configuré")
-            embed.add_field(name="Fréquence", value=f"{current['frequency']} messages")
-            embed.add_field(name="Chronomètre", value=f"{current['duration']} secondes")
-            embed.add_field(name="Compteur", value=f"{current['counter']} / {current['frequency']}")
-            embed.add_field(name="Devinette", value="En cours" if active else "En attente")
-            embed.set_footer(text="Les tentatives comptent aussi ; une seule devinette peut être active à la fois.")
-            await i.followup.send(embed=embed, ephemeral=True)
-
-        @self.tree.command(name="points", description="Afficher tes points ou ceux d’un membre.")
-        @app_commands.guild_only()
-        async def points(i: discord.Interaction, membre: discord.Member | None = None):
-            await i.response.defer()
-            target = membre or i.user
-            total = await self.store.points(i.guild_id, target.id)
-            await i.followup.send(embed=discord.Embed(title="⭐ Points",
-                description=f"**{safe_name(target.display_name)}** : **{total} point{'s' if total != 1 else ''}**.", color=COLORS["won"]))
-
-        @self.tree.command(name="classement", description="Afficher le top 10 des joueurs de ce serveur.")
-        @app_commands.guild_only()
-        async def classement(i: discord.Interaction):
-            await i.response.defer()
-            rows = await self.store.leaderboard(i.guild_id)
-            lines = []
-            for row in rows:
-                member = i.guild.get_member(row["user"])
-                name = member.display_name if member else row["name"]
-                medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(row["position"], "🏅")
-                lines.append(f"{medal} **{row['position']}.** {safe_name(name)} — **{row['points']} pts**")
-            embed = discord.Embed(title="🏆 Top 10 du serveur",
-                                  description="\n".join(lines) or "Aucun point pour le moment. La première victoire t’attend !",
-                                  color=0xF1C75B)
-            embed.set_footer(text="En cas d’égalité de points, les joueurs partagent le même rang.")
-            await i.followup.send(embed=embed)
-
-        @self.tree.command(name="monrang", description="Afficher ta position dans le classement.")
-        @app_commands.guild_only()
-        async def monrang(i: discord.Interaction):
-            await i.response.defer(ephemeral=True)
-            rank = await self.store.rank(i.guild_id, i.user.id)
-            text = f"Tu es **n°{rank['position']}** avec **{rank['points']} points**." if rank else "Tu n’es pas encore classé. Trouve une devinette pour gagner ton premier point !"
-            await i.followup.send(embed=discord.Embed(title="📊 Mon rang", description=text, color=COLORS["question"]), ephemeral=True)
-
-        self.tree.add_command(config)
 
     async def close(self):
         if self.worker:

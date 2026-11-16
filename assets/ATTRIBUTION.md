@@ -1,13 +1,10 @@
-# Images de la banque
+# Attribution des photos
 
-Illustrations Twemoji 14.0.2, copyright Twitter, Inc. et autres contributeurs.
-Graphismes sous **Creative Commons Attribution 4.0 International (CC BY 4.0)** :
-https://creativecommons.org/licenses/by/4.0/
+Les questions illustrées utilisent des photographies réelles sous licences
+libres. Les métadonnées par image — titre, auteur, page source et licence —
+figurent dans [`photo-attribution.json`](photo-attribution.json). Cette liste
+est à conserver avec les fichiers de `photos/`.
 
-Source officielle : https://github.com/twitter/twemoji/tree/v14.0.2/assets/72x72
-Chaque PNG conserve son nom de code Unicode d’origine. Les illustrations sont
-redimensionnées et placées sur une carte de jeu au moment de l’envoi.
-Les images sont incluses localement : aucun service externe n’est nécessaire à
-l’exécution. Le fichier questions.json associe explicitement image et réponse.
-
-Les cartes de calcul sont générées directement avec Pillow.
+Les licences indiquées sont celles déclarées à la source : CC BY, CC BY-SA ou
+CC0. Les images sont incluses localement ; leur téléchargement n’est pas requis
+au démarrage du bot. Les calculs sont dessinés localement avec Pillow.

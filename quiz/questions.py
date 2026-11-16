@@ -72,15 +72,17 @@ class Question:
         """PNG autonome, sans réponse dans le nom ni dans les métadonnées."""
         canvas = Image.new("RGB", (800, 560), "#101827")
         draw = ImageDraw.Draw(canvas)
-        draw.rounded_rectangle((24, 24, 776, 536), radius=32, fill="#f4f7fc")
         if self.expression:
+            draw.rounded_rectangle((24, 24, 776, 536), radius=32, fill="#f4f7fc")
             # Pillow's bundled font has no multiplication-sign glyph.
             formula = f"{self.expression.replace('×', 'x')} = ?"
             draw.text((400, 285), formula, font=ImageFont.load_default(size=76), fill="#172743", anchor="mm")
         else:
             with Image.open(ROOT / "assets" / self.asset) as source:
-                picture = source.convert("RGBA").resize((320, 320), Image.Resampling.LANCZOS)
-                canvas.paste(picture, (240, 130), picture)
+                picture = source.convert("RGB").resize((752, 512), Image.Resampling.LANCZOS)
+                mask = Image.new("L", picture.size, 0)
+                ImageDraw.Draw(mask).rounded_rectangle((0, 0, 751, 511), radius=28, fill=255)
+                canvas.paste(picture, (24, 24), mask)
         buffer = io.BytesIO()
         canvas.save(buffer, format="PNG")
         return buffer.getvalue()
