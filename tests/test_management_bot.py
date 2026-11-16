@@ -81,6 +81,31 @@ class ManagementBotTests(unittest.IsolatedAsyncioTestCase):
         bot.is_bot_owner = AsyncMock(return_value=True)
         self.assertTrue(await existing_bot_owner(ctx))
 
+    async def test_unexpected_command_errors_are_logged_with_a_reference(self):
+        bot = ManagementBot(Path(tempfile.gettempdir()) / "management-bot-no-write")
+        ctx = SimpleNamespace(
+            command=SimpleNamespace(qualified_name="kick"),
+            guild=SimpleNamespace(id=42),
+            channel=SimpleNamespace(id=43),
+            author=SimpleNamespace(id=44),
+            reply=AsyncMock(),
+        )
+        try:
+            raise RuntimeError("test failure detail")
+        except RuntimeError as original:
+            error = commands.CommandInvokeError(original)
+
+        with self.assertLogs("management_bot", level="ERROR") as captured:
+            await bot.on_command_error(ctx, error)
+
+        reply = ctx.reply.await_args.args[0]
+        self.assertIn("erreur interne", reply)
+        self.assertIn("Référence", reply)
+        self.assertNotIn("Vérifie mes permissions", reply)
+        self.assertIn("commande=kick", captured.output[0])
+        self.assertIn("test failure detail", captured.output[0])
+        self.assertEqual(ctx.reply.await_args.kwargs["mention_author"], False)
+
     async def test_commands_and_permissions_are_registered(self):
         bot = ManagementBot(Path(tempfile.gettempdir()) / "management-bot-no-write")
         names = {command.name for command in bot.commands}

@@ -7,6 +7,7 @@ import logging
 import random
 import re
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -477,12 +478,24 @@ class ManagementBot(commands.Bot):
             return
         if isinstance(error, commands.NotOwner):
             return await ctx.reply("Seul le propriétaire du bot peut modifier ses propriétaires.", mention_author=False)
-        if isinstance(error, commands.CommandInvokeError) and isinstance(error.original, discord.Forbidden):
-            return await ctx.reply(
-                "Cette action manque de permissions côté bot. Vérifie les permissions Discord du bot "
-                "et place son rôle au-dessus des rôles qu’il doit gérer.",
-                mention_author=False,
-            )
+        if isinstance(error, commands.CommandInvokeError):
+            original = error.original
+            if isinstance(original, discord.Forbidden):
+                return await self.report_command_failure(
+                    ctx,
+                    original,
+                    "Discord a refusé l’action. Vérifie les permissions du bot et la position de son rôle.",
+                )
+            if isinstance(original, discord.NotFound):
+                return await self.report_command_failure(
+                    ctx, original, "Discord ne trouve plus l’élément demandé. Vérifie la cible puis réessaie."
+                )
+            if isinstance(original, discord.HTTPException):
+                return await self.report_command_failure(
+                    ctx,
+                    original,
+                    f"La requête à Discord a échoué (HTTP {original.status}, code {original.code}).",
+                )
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(error.missing_permissions)
             return await ctx.reply(
@@ -500,8 +513,38 @@ class ManagementBot(commands.Bot):
             return await ctx.reply(f"Argument manquant : `{error.param.name}`.", mention_author=False)
         if isinstance(error, commands.BadArgument):
             return await ctx.reply("Argument invalide. Vérifie les mentions, identifiants et durées.", mention_author=False)
-        log.exception("Erreur de commande %s.", getattr(ctx.command, "qualified_name", "inconnue"), exc_info=error)
-        await ctx.reply("La commande a échoué. Vérifie mes permissions et les logs.", mention_author=False)
+        original = error.original if isinstance(error, commands.CommandInvokeError) else error
+        await self.report_command_failure(
+            ctx,
+            original,
+            "La commande a rencontré une erreur interne.",
+        )
+
+    async def report_command_failure(
+        self,
+        ctx: commands.Context,
+        error: BaseException,
+        message: str,
+    ):
+        reference = uuid.uuid4().hex[:8]
+        command = getattr(ctx.command, "qualified_name", "inconnue")
+        guild_id = getattr(ctx.guild, "id", "DM")
+        channel_id = getattr(ctx.channel, "id", "inconnu")
+        author_id = getattr(ctx.author, "id", "inconnu")
+        log.error(
+            "Échec commande ref=%s commande=%s serveur=%s salon=%s auteur=%s: %r",
+            reference,
+            command,
+            guild_id,
+            channel_id,
+            author_id,
+            error,
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        return await ctx.reply(
+            f"{message} Référence `{reference}`. Un administrateur peut retrouver le détail dans les logs du bot.",
+            mention_author=False,
+        )
 
     @commands.command(name="help", aliases=["h"])
     async def help_text_command(self, ctx: commands.Context, category: str | None = None):
